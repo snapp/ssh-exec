@@ -2,7 +2,7 @@
 Just add the `bin` directory to your path.
 
 # ssh-exec #
-`ssh-exec` is a bourne script that provides the ability to execute a series of
+`ssh-exec` is a bash script that provides the ability to execute a series of
 commands on one or more remote hosts either as your own user or as root without
 the use of sudo.
 

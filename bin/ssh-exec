@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #
 # Copyright (C) 2011, Christopher A. Snapp <snappca@gmail.com>
 #
@@ -15,10 +15,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-VERSION=0.8
-PROG=$(basename $0)
+version=0.9
+prog=$(basename $0)
 
-SU_DO=false
+su_do=false
 
 export PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/ucb:/usr/local/bin:/usr/local/sbin:/opt/local/sbin:/opt/local/bin:/usr/lib:/usr/sfw/bin:/opt/sfw/bin:/usr/etc:/usr/bsd
 
@@ -26,66 +26,68 @@ export PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/ucb:/usr/local/bin:/usr/local/sbi
 #
 # $1 - boolean determining if full formatted output should be printed
 print_usage () {
-    full_output=false
+    local verbose
 
-    if [ $# -gt 0 ]; then
-        full_output=true
-        B='\033[1m'
-        U='\033[4m'
-        C='\033[0m'
+    verbose=false
+
+    if [[ $# -gt 0 ]]; then
+        verbose=true
+        b='\033[1m'
+        u='\033[4m'
+        c='\033[0m'
     fi
 
-    $full_output && echo "$PROG $VERSION" | tr '[:lower:]' '[:upper:]'
-    $full_output && echo
-    $full_output && echo "${B}NAME${C}"
-    $full_output && echo "\t${B}$PROG${C} — executes commands on remote hosts; optionally as root"
-    $full_output && echo
+    $verbose && echo "$prog $version" | tr '[:lower:]' '[:upper:]'
+    $verbose && echo
+    $verbose && echo -e "${b}NAME${c}"
+    $verbose && echo -e "\t${b}$prog${c} — executes commands on remote hosts; optionally as root"
+    $verbose && echo
 
-    echo "${B}SYNOPSIS${C}"
-    echo "\t${B}$PROG${C} [${B}-hr${C}] [${B}-f${C} ${U}file${C}] ${B}-H${C} ${U}hosts${C}"
+    echo -e "${b}SYNOPSIS${c}"
+    echo -e "\t${b}$prog${c} [${b}-hr${c}] [${b}-f${c} ${u}file${c}] ${b}-H${c} ${u}hosts${c}"
     echo
 
-    $full_output && echo "${B}DESCRIPTION${C}"
-    $full_output && echo "\tThe primary goal of this script is to provide a secure method"
-    $full_output && echo "\tfor executing commands on remote hosts as root without sudo."
-	$full_output && echo
-    $full_output && echo "\tNote that commands can be provided via file or STDIN."
-	$full_output && echo
-    $full_output && echo "\t${B}Running as Root${C}"
-	$full_output && echo "\tRunning as root will require that a root password be "
-    $full_output && echo "\tprovided as a pattern where the letter 'X' (upper or lower case)"
-	$full_output && echo "\twhen immediately followed by a number will be substituted"
-	$full_output && echo "\twith the appropriate letter from the provided hostname."
-	$full_output && echo
-	$full_output && echo "\tExample:\t pattern: ${B}passX3wordx1X4${C}"
-	$full_output && echo "\t\t\thostname: ${B}example.com${C}"
-    $full_output && echo "\t\t\t  result: ${B}passAwordeM${C}"
-    $full_output && echo
-    $full_output && echo "\t${B}Troubleshooting${C}"
-	$full_output && echo "\tIt is expected that the results of your script end"
-	$full_output && echo "\twith a prompt as recognized by the regular expression:"
-    $full_output && echo
-	$full_output && echo "\t\t\t${B}/(>|%|#|\\$) \$/${C}"
-    $full_output && echo
-	$full_output && echo "\tYour script will hang should the prompt not be detected."
-    $full_output && echo
+    $verbose && echo -e "${b}DESCRIPTION${c}"
+    $verbose && echo -e "\tThe primary goal of this script is to provide a secure method"
+    $verbose && echo -e "\tfor executing commands on remote hosts as root without sudo."
+	$verbose && echo
+    $verbose && echo -e "\tNote that commands can be provided via file or STDIN."
+	$verbose && echo
+    $verbose && echo -e "\t${b}Running as Root${c}"
+	$verbose && echo -e "\tRunning as root will require that a root password be "
+    $verbose && echo -e "\tprovided as a pattern where the letter 'X' (upper or lower case)"
+	$verbose && echo -e "\twhen immediately followed by a number will be substituted"
+	$verbose && echo -e "\twith the appropriate letter from the provided hostname."
+	$verbose && echo
+	$verbose && echo -e "\tExample:\t pattern: ${b}passX3wordx1X4${c}"
+	$verbose && echo -e "\t\t\thostname: ${b}example.com${c}"
+    $verbose && echo -e "\t\t\t  result: ${b}passAwordeM${c}"
+    $verbose && echo
+    $verbose && echo -e "\t${b}Troubleshooting${c}"
+	$verbose && echo -e "\tIt is expected that the results of your script end"
+	$verbose && echo -e "\twith a prompt as recognized by the regular expression:"
+    $verbose && echo
+	$verbose && echo -e "\t\t\t${b}/(>|%|#|\\$) \$/${c}"
+    $verbose && echo
+	$verbose && echo -e "\tYour script will hang should the prompt not be detected."
+    $verbose && echo
 
-    echo "${B}OPTIONS${C}"
-    echo "\t${B}-f${C} ${U}file${C}"
-    echo "\t\tthe file containing commands to be executed"
+    echo -e "${b}OPTIONS${c}"
+    echo -e "\t${b}-f${c} ${u}file${c}"
+    echo -e "\t\tthe file containing commands to be executed"
     echo
-    echo "\t${B}-h${C}\tdisplay this help and exit"
+    echo -e "\t${b}-h${c}\tdisplay this help and exit"
     echo
-    echo "\t${B}-H${C} ${U}hosts${C}"
-    echo "\t\tthe list of hosts where commands will be executed"
+    echo -e "\t${b}-H${c} ${u}hosts${c}"
+    echo -e "\t\tthe list of hosts where commands will be executed"
     echo
-    echo "\t${B}-r${C}\trun commands as root"
+    echo -e "\t${b}-r${c}\trun commands as root"
     echo
 }
 
 # print error message followed by usage and exit
 error () {
-    echo "\nERROR: $1\n" >&2
+    echo -e "\nERROR: $1\n" >&2
     print_usage >&2
     exit 1
 }
@@ -121,24 +123,28 @@ get_password () {
 
 
 # convert provided commands into expect commands
-get_commands () {
-    # initial conversion
+insert_commands () {
+    local script
+
+    script="${1:?'ERROR: script file not provided'}"
+
+    # initial command conversion
     echo "$commands" \
     | sed -e 's_\$_\\$_g' \
           -e 's_\\"_\\\\\"_g' \
           -e 's_\"_\\\"_g' \
           -e 's_^_send "_' \
           -e 's_$_\\r";expect -re $prompt_' \
-        >> $SCRIPT
+        >> "$script"
 
-    # replace ~~interact~~ token with expect code
-    sed -i '/~~interact~~/ r /dev/stdin' $SCRIPT <<'INTERACT'
+    # replace %interact% token with expect code
+    sed -i '/%interact%/ r /dev/stdin' $script <<'INTERACT'
 send_user "\n\n                   ##      Entering Interactive Mode      ##\n"
-send_user "                   ### type \"~x\" to end your interaction ###\n"
+send_user "                   ### type \"%x\" to end your interaction ###\n"
 send "\r"
 expect -re $prompt
 interact {
-    ~x {
+    %x {
         send_user "\n\n                   ##      Exiting Interactive Mode       ##\n"
         return
     }
@@ -150,39 +156,37 @@ interact {
 INTERACT
 
     # remove interact token
-    sed -i -e '/send "~~interact~~\\r"/d' -e 's/~~interact~~\\r//g' $SCRIPT
+    sed -i -e '/send "%interact%\\r"/d' -e 's/%interact%\\r//g' "$script"
 }
 
 # sanity check
-[ $# -lt 2 -a "$1" != '-h' ] && error 'not enough arguments provided'
+[[ $# -lt 2 ]] && [[ "$1" != '-h' ]] && error 'not enough arguments provided'
 
 # dependency check
-[ -z "$(which expect)" ] && error 'expect command is not available'
+[[ "$(which expect)" ]] || error 'expect command is not available'
 
 
 # process arguments
 while getopts :hrf:H: OPTION; do
     case "$OPTION" in
         f)
-            [ ! -r "$OPTARG" ] && error 'cannot read provided command file'
+            [[ ! -r "$OPTARG" ]] && error 'cannot read provided command file'
 
             commands=$(cat "$OPTARG")
 
             shift $(($OPTIND-1))
             ;;
         r)
-            SU_DO=true
-
-            shift $(($OPTIND-1))
+            su_do=true
             ;;
         H)
             hosts=$OPTARG
-            [ -z "$hosts" ] && error 'at least one host must be provided'
+            [[ "$hosts" ]] || error 'at least one host must be provided'
 
             shift $(($OPTIND-1))
             ;;
         h)
-            print_usage 'full' >&2
+            print_usage 'verbose' >&2
             exit 0
             ;;
         \:)
@@ -195,27 +199,27 @@ while getopts :hrf:H: OPTION; do
 done
 
 # check for commands from other sources
-if [ -z "$commands" ]; then
-    if [ $# -gt 0 ]; then
+if [[ -z "$commands" ]]; then
+    if [[ $# -gt 0 ]]; then
         stdin="$@"
     else
         stdin=$(cat <&0)
     fi
 
-    if [ -n "$stdin" ]; then
+    if [[ "$stdin" ]]; then
         commands="$stdin"
-    elif [ -z "$stdin" ]; then
+    elif [[ -z "$stdin" ]]; then
         error 'no commands provided'
     fi
 fi
 
 
-SCRIPTDIR=`mktemp -dt $PROG.XXXXX` || error 'cannot create temp directory!'
-SCRIPT="${SCRIPTDIR}/commands.exp"
-trap "break 2>/dev/null; rm -rf $SCRIPTDIR" EXIT HUP INT QUIT ABRT PIPE ALRM TERM
+tmp_dir="$(mktemp -dt $prog.XXXXX)" || error 'cannot create temp directory!'
+script="${tmp_dir}/commands.exp"
+trap "break 2>/dev/null; rm -rf $tmp_dir" EXIT HUP INT QUIT ABRT PIPE ALRM TERM
 
 # initialize expect script used during ssh session
-cat >> $SCRIPT <<'HEAD'
+cat >> "$script" <<'HEAD'
 #!/usr/bin/expect
 set timeout 10
 set prompt "(>|%|#|\\$) $"
@@ -252,21 +256,21 @@ expect "*nter passphrase" {
 HEAD
 
 
-if $SU_DO; then
-    cat >> $SCRIPT <<SUDO1
-set root_passwd [lindex \$argv 1]
+if $su_do; then
+    cat >> "$script" <<'SUDO1'
+set root_passwd [lindex $argv 1]
 # send ctrl-c to force a prompt
 send \003
 sleep 1
 send "su -\r"
 expect "*sword:" {
-    send "\$root_passwd\r"
-    expect -re \$prompt {
+    send "$root_passwd\r"
+    expect -re $prompt {
 SUDO1
 
-    get_commands
+    insert_commands "$script"
 
-    cat >> $SCRIPT <<SUDO2
+    cat >> "$script" <<SUDO2
         # exiting root session
         send "exit\r"
         log_user 0
@@ -278,11 +282,11 @@ SUDO1
 }
 SUDO2
 else
-    get_commands
+    insert_commands "$script"
 fi
 
 # close expect script out
-cat >> $SCRIPT <<'TAIL'
+cat >> "$script" <<'TAIL'
 if {$connected} {
     sleep 1
     # send ctrl-c to force a prompt
@@ -293,7 +297,7 @@ if {$connected} {
  }
 TAIL
 
-if $SU_DO; then
+if $su_do; then
     # flush stdin before prompting for pattern
     0<&-
     exec 0</dev/tty
@@ -304,44 +308,41 @@ if $SU_DO; then
     stty echo
     echo
 
-    [ -z "$pattern" ] && error 'invalid password pattern'
+    [[ "$pattern" ]] || error 'invalid password pattern'
 fi
 
-echo "\nCOMMANDS:"
-echo "$commands" | while read cmd;  do
-    echo "\t$cmd"
-done
+echo -e "\nCOMMANDS:"
+while read cmd;  do
+    echo -e "\t$cmd"
+done <<<"$commands"
 
-echo "\nHOSTS:"
+echo -e "\nHOSTS:"
 for host in $hosts; do
-    echo "\t$host"
+    echo -e "\t$host"
 done
-
 
 # flush stdin before prompting to continue
 0<&-
 exec 0</dev/tty
 
-echo -n "\nAre you sure you want to continue [y/N]? "
+echo -e -n "\nAre you sure you want to continue [y/N]? "
 read continue
-if [ "$continue" != 'y' -a "$continue" != 'Y' ]; then
-    echo '\nAborted!'
+if [[ ! "$continue" =~ y|Y ]]; then
+    echo -e '\nAborted!'
     exit 0
 fi
-
 
 # run generated script against all provided hosts
 for host in $hosts; do
     if ping -qn -c1 -W1 $host | grep -q '1 received'; then
-        if [ -n "$pattern" ]; then
+        if [[ "$pattern" ]]; then
             root_password=$(get_password $host $pattern)
         fi
 
-        cp $SCRIPT ~/expect
         # run expect script passing the root password if necessary
-        expect -f $SCRIPT $host $root_password
+        expect -f "$script" "$host" "$root_password
     else
-        echo "\n$(echo "#   $host Unavailable   #" | tr '[:lower:]' '[:upper:]')"
+        echo -e "\n$(echo "#   $host Unavailable   #" | tr '[:lower:]' '[:upper:]')"
     fi
 done
 

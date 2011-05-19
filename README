@@ -1,0 +1,83 @@
+# ssh-exec #
+`ssh-exec` is a bourne script that provides the ability to execute a series of
+commands on one or more remote hosts either as your own user or as root without
+the use of sudo.
+
+## Running as Root ##
+In order to execute commands as root you will need to pass the `-r` argument
+and it is expected that the remote host follows a convention where the root
+password may be derived from a pattern provided by the user at run time.
+Within the provided pattern the letter 'X' (upper or lower case) when
+immediately followed by a number will be substituted with the appropriate
+letter from the provided hostname.
+
+            Example:         pattern: passX3wordx1X4
+                            hostname: mail.example.com
+                              result: passIwordmL
+
+## Running Against Multiple Hosts ##
+`ssh-exec` requires the `-H` argument be passed along with a string containing
+a list of fully qualified domain names.  This list may be delimited by either a
+space or newline.
+
+## Running Simple Commands ##
+`ssh-exec` assumes all additional arguments passed to it are commands to be
+executed on the remote system.
+
+## Running Complex Commands ##
+`ssh-exec` can consume commands via stdin, here-doc, or from a separate file
+via the `-f` argument.  Commands consumed in this way are separated by newline
+and executed on the remote system exactly as they are passed in.
+
+## Pausing For Interaction ##
+If you require the ability to interact with the remote shell at any point in
+your script you may pass the ~~interact~~ token.  This token must be provided
+on it's own line and will cause the script to stop and provide you with the
+ability to perform additional actions on the remote system.  When you are ready
+to pass control back to the controling script you simply type `~x`.
+
+Keep in mind that it is your responsibility to maintain a proper "state" on the
+remote system.  Should you be executing commands that require root privileges
+and then you interact and pass the exit command you will be dropped out of root
+and if you were to pass control back your script would likely fail as it is
+still expecting to be the root user.
+
+## Caveats ##
+1.  It is expected that your user is capable of logging into the remote system
+via ssh key.
+2. `ssh-exec` will automatically accept the server key, but will abort should
+the user be asked for either a password or passphrase.
+3.  It is expected that the final results of your script end with a prompt as
+recognized by the regular expression:    /(>|%|#|\$) $/
+Should this not be the case, your script will hang until it times out after 10
+seconds.
+
+## Examples ##
+List user's home directory on mail.example.com:
+    ~:$ ssh-exec -H 'mail.example.com' ls
+
+List user's home directory on dev-1.example.com, dev-2.example.com, & dev-3.example.com:
+    ~:$ ssh-exec -H "$(echo dev-{1..3}.example.com)" ls
+
+List user's home directory on hostnames provided by external file:
+    ~:$ ssh-exec -H "$(cat hosts.txt)" ls
+
+List root's home directory on mail.example.com and dev.example.com:
+    ~:$ ssh-exec -r -H 'mail.example.com dev.example.com' ls
+
+Read commands as root from a file to be run on dev.example.com:
+    ~:$ ssh-exec -r -H 'dev.example.com' -f commands.txt
+
+Read commands from stdin (note: you must use ctrl+d to end stdin)
+    ~:$ ssh-exec -H 'mail.example.com'
+ls
+echo $SHELL
+hostname
+^D
+
+Read commands from here-doc (note: quoting the prefix disables bash param expansion)
+    ~:$ ssh-exec -H 'mail.example.com' <<'EOF'
+ls
+echo $SHELL
+hostname
+EOF

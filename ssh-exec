@@ -1,0 +1,348 @@
+#!/bin/sh
+#
+# Copyright (C) 2011, Christopher A. Snapp <snappca@gmail.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+VERSION=0.8
+PROG=$(basename $0)
+
+SU_DO=false
+
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/ucb:/usr/local/bin:/usr/local/sbin:/opt/local/sbin:/opt/local/bin:/usr/lib:/usr/sfw/bin:/opt/sfw/bin:/usr/etc:/usr/bsd
+
+# print command usage
+#
+# $1 - boolean determining if full formatted output should be printed
+print_usage () {
+    full_output=false
+
+    if [ $# -gt 0 ]; then
+        full_output=true
+        B='\033[1m'
+        U='\033[4m'
+        C='\033[0m'
+    fi
+
+    $full_output && echo "$PROG $VERSION" | tr '[:lower:]' '[:upper:]'
+    $full_output && echo
+    $full_output && echo "${B}NAME${C}"
+    $full_output && echo "\t${B}$PROG${C} — executes commands on remote hosts; optionally as root"
+    $full_output && echo
+
+    echo "${B}SYNOPSIS${C}"
+    echo "\t${B}$PROG${C} [${B}-hr${C}] [${B}-f${C} ${U}file${C}] ${B}-H${C} ${U}hosts${C}"
+    echo
+
+    $full_output && echo "${B}DESCRIPTION${C}"
+    $full_output && echo "\tThe primary goal of this script is to provide a secure method"
+    $full_output && echo "\tfor executing commands on remote hosts as root without sudo."
+	$full_output && echo
+    $full_output && echo "\tNote that commands can be provided via file or STDIN."
+	$full_output && echo
+    $full_output && echo "\t${B}Running as Root${C}"
+	$full_output && echo "\tRunning as root will require that a root password be "
+    $full_output && echo "\tprovided as a pattern where the letter 'X' (upper or lower case)"
+	$full_output && echo "\twhen immediately followed by a number will be substituted"
+	$full_output && echo "\twith the appropriate letter from the provided hostname."
+	$full_output && echo
+	$full_output && echo "\tExample:\t pattern: ${B}passX3wordx1X4${C}"
+	$full_output && echo "\t\t\thostname: ${B}example.com${C}"
+    $full_output && echo "\t\t\t  result: ${B}passAwordeM${C}"
+    $full_output && echo
+    $full_output && echo "\t${B}Troubleshooting${C}"
+	$full_output && echo "\tIt is expected that the results of your script end"
+	$full_output && echo "\twith a prompt as recognized by the regular expression:"
+    $full_output && echo
+	$full_output && echo "\t\t\t${B}/(>|%|#|\\$) \$/${C}"
+    $full_output && echo
+	$full_output && echo "\tYour script will hang should the prompt not be detected."
+    $full_output && echo
+
+    echo "${B}OPTIONS${C}"
+    echo "\t${B}-f${C} ${U}file${C}"
+    echo "\t\tthe file containing commands to be executed"
+    echo
+    echo "\t${B}-h${C}\tdisplay this help and exit"
+    echo
+    echo "\t${B}-H${C} ${U}hosts${C}"
+    echo "\t\tthe list of hosts where commands will be executed"
+    echo
+    echo "\t${B}-r${C}\trun commands as root"
+    echo
+}
+
+# print error message followed by usage and exit
+error () {
+    echo "\nERROR: $1\n" >&2
+    print_usage >&2
+    exit 1
+}
+
+# return generated password using provided hostname and pattern
+#
+# $1 - hostname: string source of letters used during substitution
+# $2 - pattern:  root password with the letter 'X' (upper and lower case)
+#                when immediately followed by a number being substituded
+#                with the appropriate letter from the provided hostname
+#                e.g. passAwordeM is derived from:
+#                                               pattern=passX3wordx1X4
+#                                               hostname=example.com
+get_password () {
+    # REDO 20110503 - find out how to accomplish variable defs in solaris
+    awk -v host="$1" -v pattern="$2" '
+        function getletter(case_pos) {
+            case=substr(case_pos, 1, 1)
+            pos=substr(case_pos, 2)
+
+            return (case == "X") ? toupper(substr(host, pos, 1)) : tolower(substr(host, pos, 1))
+        }
+
+        BEGIN {
+            do {
+                idx = match(pattern, /[xX][0-9]+/)
+                pattern=substr(pattern, 0, idx) getletter(substr(pattern, idx, RLENGTH)) substr(pattern, idx+RLENGTH)
+            } while (idx != 0)
+
+            print pattern
+        }'
+}
+
+
+# convert provided commands into expect commands
+get_commands () {
+    # initial conversion
+    echo "$commands" \
+    | sed -e 's_\$_\\$_g' \
+          -e 's_\\"_\\\\\"_g' \
+          -e 's_\"_\\\"_g' \
+          -e 's_^_send "_' \
+          -e 's_$_\\r";expect -re $prompt_' \
+        >> $SCRIPT
+
+    # replace ~~interact~~ token with expect code
+    sed -i '/~~interact~~/ r /dev/stdin' $SCRIPT <<'INTERACT'
+send_user "\n\n                   ##      Entering Interactive Mode      ##\n"
+send_user "                   ### type \"~x\" to end your interaction ###\n"
+send "\r"
+expect -re $prompt
+interact {
+    ~x {
+        send_user "\n\n                   ##      Exiting Interactive Mode       ##\n"
+        return
+    }
+    -o eof {
+        send_user "\n\n                   #  Aborted! - User Disconnected During Interact: $host  #\n"
+        exit
+    }
+}
+INTERACT
+
+    # remove interact token
+    sed -i -e '/send "~~interact~~\\r"/d' -e 's/~~interact~~\\r//g' $SCRIPT
+}
+
+# sanity check
+[ $# -lt 2 -a "$1" != '-h' ] && error 'not enough arguments provided'
+
+# dependency check
+[ -z "$(which expect)" ] && error 'expect command is not available'
+
+
+# process arguments
+while getopts :hrf:H: OPTION; do
+    case "$OPTION" in
+        f)
+            [ ! -r "$OPTARG" ] && error 'cannot read provided command file'
+
+            commands=$(cat "$OPTARG")
+
+            shift $(($OPTIND-1))
+            ;;
+        r)
+            SU_DO=true
+
+            shift $(($OPTIND-1))
+            ;;
+        H)
+            hosts=$OPTARG
+            [ -z "$hosts" ] && error 'at least one host must be provided'
+
+            shift $(($OPTIND-1))
+            ;;
+        h)
+            print_usage 'full' >&2
+            exit 0
+            ;;
+        \:)
+            error "missing argument for option: -$OPTARG"
+            ;;
+        \?)
+            error "unknown option: -$OPTARG"
+            ;;
+    esac
+done
+
+# check for commands from other sources
+if [ -z "$commands" ]; then
+    if [ $# -gt 0 ]; then
+        stdin="$@"
+    else
+        stdin=$(cat <&0)
+    fi
+
+    if [ -n "$stdin" ]; then
+        commands="$stdin"
+    elif [ -z "$stdin" ]; then
+        error 'no commands provided'
+    fi
+fi
+
+
+SCRIPTDIR=`mktemp -dt $PROG.XXXXX` || error 'cannot create temp directory!'
+SCRIPT="${SCRIPTDIR}/commands.exp"
+trap "break 2>/dev/null; rm -rf $SCRIPTDIR" EXIT HUP INT QUIT ABRT PIPE ALRM TERM
+
+# initialize expect script used during ssh session
+cat >> $SCRIPT <<'HEAD'
+#!/usr/bin/expect
+set timeout 10
+set prompt "(>|%|#|\\$) $"
+set host [lindex $argv 0]
+
+log_user 0
+
+spawn -noecho ssh $host
+set connected 1
+
+expect_after {
+    timeout {
+        send_user "\n\n                   #  Aborted! - Timeout Looking for Prompt: $host  #\n"
+        return
+    } default {
+        send_user "\n\n                   #  Aborted! - Error State Observed: $host  #\n"
+        return
+    }
+}
+
+# user login
+expect "*nter passphrase" {
+    send_user "\n\n                   #  Aborted! - Missing Passphrase: $host  #\n"
+    return
+} "*yes/no" {
+    send_user "\n\n                   # Accepting Authenticity: $host #\n"
+    send "yes\r"
+    send_user "                   #       Connect:    $host      #\n"
+} -re $prompt {
+    send_user "\n\n                   #       Connect:    $host      #\n"
+    send "\r"
+    log_user 1
+}
+HEAD
+
+
+if $SU_DO; then
+    cat >> $SCRIPT <<SUDO1
+set root_passwd [lindex \$argv 1]
+# send ctrl-c to force a prompt
+send \003
+sleep 1
+send "su -\r"
+expect "*sword:" {
+    send "\$root_passwd\r"
+    expect -re \$prompt {
+SUDO1
+
+    get_commands
+
+    cat >> $SCRIPT <<SUDO2
+        # exiting root session
+        send "exit\r"
+        log_user 0
+    } "su: *" {
+        send "exit\r"
+        send_user "\n\n                   #  Aborted! - Invalid Root Password: $host  #\n"
+        exit
+    }
+}
+SUDO2
+else
+    get_commands
+fi
+
+# close expect script out
+cat >> $SCRIPT <<'TAIL'
+if {$connected} {
+    sleep 1
+    # send ctrl-c to force a prompt
+    send \003
+    expect -re $prompt
+    send "exit\r"
+    send_user "\n\n                   #       Disconnect: $host      #\n"
+ }
+TAIL
+
+if $SU_DO; then
+    # flush stdin before prompting for pattern
+    0<&-
+    exec 0</dev/tty
+
+    echo -n "Enter Root Password Pattern: "
+    stty -echo
+    read pattern
+    stty echo
+    echo
+
+    [ -z "$pattern" ] && error 'invalid password pattern'
+fi
+
+echo "\nCOMMANDS:"
+echo "$commands" | while read cmd;  do
+    echo "\t$cmd"
+done
+
+echo "\nHOSTS:"
+for host in $hosts; do
+    echo "\t$host"
+done
+
+
+# flush stdin before prompting to continue
+0<&-
+exec 0</dev/tty
+
+echo -n "\nAre you sure you want to continue [y/N]? "
+read continue
+if [ "$continue" != 'y' -a "$continue" != 'Y' ]; then
+    echo '\nAborted!'
+    exit 0
+fi
+
+
+# run generated script against all provided hosts
+for host in $hosts; do
+    if ping -qn -c1 -W1 $host | grep -q '1 received'; then
+        if [ -n "$pattern" ]; then
+            root_password=$(get_password $host $pattern)
+        fi
+
+        cp $SCRIPT ~/expect
+        # run expect script passing the root password if necessary
+        expect -f $SCRIPT $host $root_password
+    else
+        echo "\n$(echo "#   $host Unavailable   #" | tr '[:lower:]' '[:upper:]')"
+    fi
+done
+
+exit 0

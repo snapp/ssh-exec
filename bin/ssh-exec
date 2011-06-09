@@ -20,8 +20,6 @@ prog=$(basename $0)
 
 su_do=false
 
-declare -a hosts
-
 export PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/ucb:/usr/local/bin:/usr/local/sbin:/opt/local/sbin:/opt/local/bin:/usr/lib:/usr/sfw/bin:/opt/sfw/bin:/usr/etc:/usr/bsd
 
 # print command usage
@@ -46,7 +44,7 @@ print_usage () {
     $verbose && echo
 
     echo -e "${b}SYNOPSIS${c}"
-    echo -e "\t${b}$prog${c} [${b}-hr${c}] [${b}-f${c} ${u}file${c}] ${b}-H${c} ${u}hosts${c}"
+    echo -e "\t${b}$prog${c} [${b}-hr${c}] [${b}-f${c} ${u}file${c}] ${u}host1..host2..${c}"
     echo
 
     $verbose && echo -e "${b}DESCRIPTION${c}"
@@ -79,9 +77,6 @@ print_usage () {
     echo -e "\t\tthe file containing commands to be executed"
     echo
     echo -e "\t${b}-h${c}\tdisplay this help and exit"
-    echo
-    echo -e "\t${b}-H${c} ${u}hosts${c}"
-    echo -e "\t\tthe list of hosts where commands will be executed"
     echo
     echo -e "\t${b}-r${c}\trun commands as root"
     echo
@@ -171,7 +166,7 @@ INTERACT
 
 
 # process arguments
-while getopts :hrf:H: OPTION; do
+while getopts :hrf: OPTION; do
     case "$OPTION" in
         f)
             [[ ! -r "$OPTARG" ]] && error 'cannot read provided command file'
@@ -183,12 +178,6 @@ while getopts :hrf:H: OPTION; do
         r)
             su_do=true
             shift
-            ;;
-        H)
-            hosts=( $OPTARG )
-            [[ ${#hosts[*]} -ne 0 ]] || error 'at least one host must be provided'
-
-            shift $(($OPTIND-1))
             ;;
         h)
             print_usage 'verbose' >&2
@@ -203,8 +192,7 @@ while getopts :hrf:H: OPTION; do
     esac
 done
 
-# load any straggling args into hosts array
-hosts=( ${hosts[@]} $@ )
+hosts=$@
 [[ ${#hosts[*]} -ne 0 ]] || error 'no hosts provided'
 
 # check for commands from stdin

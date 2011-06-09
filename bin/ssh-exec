@@ -20,6 +20,8 @@ prog=$(basename $0)
 
 su_do=false
 
+declare -a hosts
+
 export PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/ucb:/usr/local/bin:/usr/local/sbin:/opt/local/sbin:/opt/local/bin:/usr/lib:/usr/sfw/bin:/opt/sfw/bin:/usr/etc:/usr/bsd
 
 # print command usage
@@ -99,8 +101,8 @@ error () {
 #                when immediately followed by a number being substituded
 #                with the appropriate letter from the provided hostname
 #                e.g. passAwordeM is derived from:
-#                                               pattern=passX3wordx1X4
-#                                               hostname=example.com
+#                     pattern=passX3wordx1X4
+#                     hostname=example.com
 get_password () {
     # REDO 20110503 - find out how to accomplish variable defs in solaris
     awk -v host="$1" -v pattern="$2" '
@@ -137,14 +139,14 @@ insert_commands () {
           -e 's_$_\\r";expect -re $prompt_' \
         >> "$script"
 
-    # replace %interact% token with expect code
-    sed -i '/%interact%/ r /dev/stdin' $script <<'INTERACT'
+    # replace #interact# token with expect code
+    sed -i '/#interact#/ r /dev/stdin' $script <<'INTERACT'
 send_user "\n\n                   ##      Entering Interactive Mode      ##\n"
-send_user "                   ### type \"%x\" to end your interaction ###\n"
+send_user "                   ### type \"#x\" to end your interaction ###\n"
 send "\r"
 expect -re $prompt
 interact {
-    %x {
+    #x {
         send_user "\n\n                   ##      Exiting Interactive Mode       ##\n"
         return
     }
@@ -156,7 +158,9 @@ interact {
 INTERACT
 
     # remove interact token
-    sed -i -e '/send "%interact%\\r"/d' -e 's/%interact%\\r//g' "$script"
+    sed -i -e '/send "#interact#\\r"/d' -e 's/#interact#\\r//g' "$script"
+
+    #TODO 20110609 - insert while loop looking for #password:2 Tripwire Password#
 }
 
 # sanity check
@@ -181,8 +185,8 @@ while getopts :hrf:H: OPTION; do
             shift
             ;;
         H)
-            hosts=$OPTARG
-            [[ "$hosts" ]] || error 'at least one host must be provided'
+            hosts=( $OPTARG )
+            [[ ${#hosts[*]} -ne 0 ]] || error 'at least one host must be provided'
 
             shift $(($OPTIND-1))
             ;;
@@ -199,11 +203,9 @@ while getopts :hrf:H: OPTION; do
     esac
 done
 
-hosts="$hosts $@"
-
-if [[ -z "$hosts" ]] || [[ "$hosts" == ' ' ]]; then
-    error 'no hosts provided'
-fi
+# load any straggling args into hosts array
+hosts=( ${hosts[@]} $@ )
+[[ ${#hosts[*]} -ne 0 ]] || error 'no hosts provided'
 
 # check for commands from stdin
 if [[ -z "$commands" ]]; then
@@ -215,7 +217,6 @@ if [[ -z "$commands" ]]; then
         error 'no commands provided'
     fi
 fi
-
 
 tmp_dir="$(mktemp -dt $prog.XXXXX)" || error 'cannot create temp directory!'
 script="${tmp_dir}/commands.exp"
@@ -320,7 +321,7 @@ while read cmd;  do
 done <<<"$commands"
 
 echo -e "\nHOSTS:"
-for host in $hosts; do
+for host in "${hosts[@]}"; do
     echo -e "\t$host"
 done
 
@@ -336,8 +337,8 @@ if [[ ! "$continue" =~ y|Y ]]; then
 fi
 
 # run generated script against all provided hosts
-for host in $hosts; do
-    if ping -qn -c1 -W1 $host | grep -q '1 received'; then
+for host in "${hosts[@]}"; do
+    if ping -qn -c1 -W1 "$host" | grep -q '1 received'; then
         if [[ "$pattern" ]]; then
             root_password=$(get_password $host $pattern)
         fi

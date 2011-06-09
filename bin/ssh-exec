@@ -160,7 +160,7 @@ INTERACT
 }
 
 # sanity check
-[[ $# -lt 2 ]] && [[ "$1" != '-h' ]] && error 'not enough arguments provided'
+[[ $# -lt 1 ]] && error 'not enough arguments provided'
 
 # dependency check
 [[ "$(which expect)" ]] || error 'expect command is not available'
@@ -178,6 +178,7 @@ while getopts :hrf:H: OPTION; do
             ;;
         r)
             su_do=true
+            shift
             ;;
         H)
             hosts=$OPTARG
@@ -198,13 +199,15 @@ while getopts :hrf:H: OPTION; do
     esac
 done
 
-# check for commands from other sources
+hosts="$hosts $@"
+
+if [[ -z "$hosts" ]] || [[ "$hosts" == ' ' ]]; then
+    error 'no hosts provided'
+fi
+
+# check for commands from stdin
 if [[ -z "$commands" ]]; then
-    if [[ $# -gt 0 ]]; then
-        stdin="$@"
-    else
-        stdin=$(cat <&0)
-    fi
+    stdin=$(cat <&0)
 
     if [[ "$stdin" ]]; then
         commands="$stdin"
@@ -340,7 +343,7 @@ for host in $hosts; do
         fi
 
         # run expect script passing the root password if necessary
-        expect -f "$script" "$host" "$root_password
+        expect -f "$script" "$host" "$root_password"
     else
         echo -e "\n$(echo "#   $host Unavailable   #" | tr '[:lower:]' '[:upper:]')"
     fi

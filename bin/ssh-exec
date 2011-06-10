@@ -15,7 +15,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-version=0.9
+# enable strict error checking
+# set -ue
+
+# spaces should never be separators dangit!
+# IFS="\t\n"
+
+version=0.9.5
 prog=$(basename $0)
 
 su_do=false
@@ -110,7 +116,7 @@ get_password () {
 
         BEGIN {
             do {
-                idx = match(pattern, /[xX][0-9]+/)
+                idx = match(pattern, /[xX][0-9]/)
                 pattern=substr(pattern, 0, idx) getletter(substr(pattern, idx, RLENGTH)) substr(pattern, idx+RLENGTH)
             } while (idx != 0)
 
@@ -127,21 +133,25 @@ insert_commands () {
 
     # initial command conversion
     echo "$commands" \
-    | sed -e 's_\$_\\$_g' \
-          -e 's_\\"_\\\\\"_g' \
-          -e 's_\"_\\\"_g' \
-          -e 's_^_send "_' \
-          -e 's_$_\\r";expect -re $prompt_' \
+    | sed -e '/^#/! s_\\\(.\)_\\\\\1_g' \
+          -e '/^#/! s_\$_\\$_g' \
+          -e '/^#/! s_\"_\\\"_g' \
+          -e '/^#/! s_\[_\\[_g' \
+          -e '/^#/! s_(_\(_g' \
+          -e '/^#/! s_^_expect -re $prompt;send "_' \
+          -e '/^#/! s_$_\\r"_' \
+          -e 's_^#\(timeout .*\)#.*_set \1_' \
+          -e 's_^#\(expect .*\)#.*_\1_' \
         >> "$script"
 
     # replace #interact# token with expect code
-    sed -i '/#interact#/ r /dev/stdin' $script <<'INTERACT'
+    sed -i '/^#interact#/ r /dev/stdin' $script <<'INTERACT'
 send_user "\n\n                   ##      Entering Interactive Mode      ##\n"
 send_user "                   ### type \"#x\" to end your interaction ###\n"
 send "\r"
 expect -re $prompt
 interact {
-    #x {
+    \#x {
         send_user "\n\n                   ##      Exiting Interactive Mode       ##\n"
         return
     }
@@ -153,9 +163,27 @@ interact {
 INTERACT
 
     # remove interact token
-    sed -i -e '/send "#interact#\\r"/d' -e 's/#interact#\\r//g' "$script"
+    sed -i '/^#interact/d' "$script"
 
-    #TODO 20110609 - insert while loop looking for #password:2 Tripwire Password#
+    # shift expect args if root password is provided
+    $su_do && count=1
+
+    # replace #password# token with expect code
+    while grep -q '^#password' "$script"; do
+        read line password_count <<<$(awk -F: '/^#password/ {if ($2) {print NR,$2} else {print NR,1}; exit}' "$script")
+        count=$(( $count+1 ))
+
+        # remove password token
+        sed -i "$line r /dev/stdin" "$script" < <(
+            echo "set password${count} [lindex \$argv $count]"
+            for i in $(seq $password_count); do
+                echo 'sleep 1'
+                echo "send \"\$password${count}\r\""
+            done
+        )
+
+        sed -i "${line}d" "$script"
+    done
 }
 
 # sanity check
@@ -163,7 +191,6 @@ INTERACT
 
 # dependency check
 [[ "$(which expect)" ]] || error 'expect command is not available'
-
 
 # process arguments
 while getopts :hrf: OPTION; do
@@ -177,7 +204,10 @@ while getopts :hrf: OPTION; do
             ;;
         r)
             su_do=true
-            shift
+            password_prompts=( "Enter Root Password Pattern" )
+
+            #FIXME 20110610 - -r combined with -f causes one to be consumed
+#             shift
             ;;
         h)
             print_usage 'verbose' >&2
@@ -192,7 +222,7 @@ while getopts :hrf: OPTION; do
     esac
 done
 
-hosts=$@
+hosts=( $@ )
 [[ ${#hosts[*]} -ne 0 ]] || error 'no hosts provided'
 
 # check for commands from stdin
@@ -205,6 +235,18 @@ if [[ -z "$commands" ]]; then
         error 'no commands provided'
     fi
 fi
+
+# extract password prompts from commands
+while read password_prompt; do
+    password_prompts+=( "$password_prompt" )
+done < <( awk -F: 'BEGIN {count=0} /^#password.*#$/ {
+    if ($3) {
+        print substr($0, index($0,$3), length($3)-1)
+    } else {
+        count++
+        print "Enter Password #"count
+    }
+}' <<<"$commands" )
 
 tmp_dir="$(mktemp -dt $prog.XXXXX)" || error 'cannot create temp directory!'
 script="${tmp_dir}/commands.exp"
@@ -250,26 +292,27 @@ HEAD
 
 if $su_do; then
     cat >> "$script" <<'SUDO1'
-set root_passwd [lindex $argv 1]
+set password1 [lindex $argv 1]
 # send ctrl-c to force a prompt
 send \003
 sleep 1
 send "su -\r"
 expect "*sword:" {
-    send "$root_passwd\r"
-    expect -re $prompt {
+    send "$password1\r"
+    expect "su: *" {
+        send "exit\r"
+        send_user "\n\n                   #  Aborted! - Invalid Root Password: $host  #\n"
+        exit
+    } -re $prompt {
+        # send ctrl-c to force a prompt
+        send \003
 SUDO1
 
-    insert_commands "$script"
+        insert_commands "$script"
 
     cat >> "$script" <<SUDO2
         # exiting root session
         send "exit\r"
-        log_user 0
-    } "su: *" {
-        send "exit\r"
-        send_user "\n\n                   #  Aborted! - Invalid Root Password: $host  #\n"
-        exit
     }
 }
 SUDO2
@@ -281,27 +324,12 @@ fi
 cat >> "$script" <<'TAIL'
 if {$connected} {
     sleep 1
-    # send ctrl-c to force a prompt
-    send \003
     expect -re $prompt
+    log_user 0
     send "exit\r"
     send_user "\n\n                   #       Disconnect: $host      #\n"
  }
 TAIL
-
-if $su_do; then
-    # flush stdin before prompting for pattern
-    0<&-
-    exec 0</dev/tty
-
-    echo -n "Enter Root Password Pattern: "
-    stty -echo
-    read pattern
-    stty echo
-    echo
-
-    [[ "$pattern" ]] || error 'invalid password pattern'
-fi
 
 echo -e "\nCOMMANDS:"
 while read cmd;  do
@@ -324,18 +352,37 @@ if [[ ! "$continue" =~ y|Y ]]; then
     exit 0
 fi
 
+# read in password patterns from stdin
+for password_prompt in "${password_prompts[@]}"; do
+    echo -n "${password_prompt}: "
+    stty -echo
+    read password_pattern
+    stty echo
+    echo
+
+    if [[ "$password_pattern" ]]; then
+        password_patterns+=( "$password_pattern" )
+    else
+        error 'invalid password pattern'
+    fi
+done
+
 # run generated script against all provided hosts
 for host in "${hosts[@]}"; do
-    if ping -qn -c1 -W1 "$host" | grep -q '1 received'; then
-        if [[ "$pattern" ]]; then
-            root_password=$(get_password $host $pattern)
-        fi
+    passwords=( )
 
-        # run expect script passing the root password if necessary
-        expect -f "$script" "$host" "$root_password"
-    else
+    # check to see if host is available
+    if ping -qn -c1 -W1 "$host" | grep -q '0 received'; then
         echo -e "\n$(echo "#   $host Unavailable   #" | tr '[:lower:]' '[:upper:]')"
+        continue
     fi
+
+    # convert patterns to host based passwords
+    for pattern in "${password_patterns[@]}"; do
+        passwords+=( $(get_password $host $pattern) )
+    done
+
+    expect -f "$script" "$host" "${passwords[@]}"
 done
 
 exit 0

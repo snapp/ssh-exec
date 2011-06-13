@@ -16,67 +16,66 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 # enable strict error checking
-# set -ue
+set -ue
 
-# spaces should never be separators dangit!
-# IFS="\t\n"
-
-version=0.9.5
+version=0.9.8
 prog=$(basename $0)
+commands=
+hosts=( )
 
 su_do=false
-
-export PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/ucb:/usr/local/bin:/usr/local/sbin:/opt/local/sbin:/opt/local/bin:/usr/lib:/usr/sfw/bin:/opt/sfw/bin:/usr/etc:/usr/bsd
 
 # print command usage
 #
 # $1 - boolean determining if full formatted output should be printed
 print_usage () {
-    local verbose
+    local verbose b u c
 
     verbose=false
+    [[ $# -gt 0 ]] && verbose=true
 
-    if [[ $# -gt 0 ]]; then
-        verbose=true
-        b='\033[1m'
-        u='\033[4m'
-        c='\033[0m'
+    b='\033[1m'
+    u='\033[4m'
+    c='\033[0m'
+
+    if $verbose; then
+        echo "$prog $version" | tr '[:lower:]' '[:upper:]'
+        echo
+        echo -e "${b}NAME${c}"
+        echo -e "\t${b}$prog${c} — executes commands on remote hosts; optionally as root"
+        echo
     fi
-
-    $verbose && echo "$prog $version" | tr '[:lower:]' '[:upper:]'
-    $verbose && echo
-    $verbose && echo -e "${b}NAME${c}"
-    $verbose && echo -e "\t${b}$prog${c} — executes commands on remote hosts; optionally as root"
-    $verbose && echo
 
     echo -e "${b}SYNOPSIS${c}"
     echo -e "\t${b}$prog${c} [${b}-hr${c}] [${b}-f${c} ${u}file${c}] ${u}host1..host2..${c}"
     echo
 
-    $verbose && echo -e "${b}DESCRIPTION${c}"
-    $verbose && echo -e "\tThe primary goal of this script is to provide a secure method"
-    $verbose && echo -e "\tfor executing commands on remote hosts as root without sudo."
-	$verbose && echo
-    $verbose && echo -e "\tNote that commands can be provided via file or STDIN."
-	$verbose && echo
-    $verbose && echo -e "\t${b}Running as Root${c}"
-	$verbose && echo -e "\tRunning as root will require that a root password be "
-    $verbose && echo -e "\tprovided as a pattern where the letter 'X' (upper or lower case)"
-	$verbose && echo -e "\twhen immediately followed by a number will be substituted"
-	$verbose && echo -e "\twith the appropriate letter from the provided hostname."
-	$verbose && echo
-	$verbose && echo -e "\tExample:\t pattern: ${b}passX3wordx1X4${c}"
-	$verbose && echo -e "\t\t\thostname: ${b}example.com${c}"
-    $verbose && echo -e "\t\t\t  result: ${b}passAwordeM${c}"
-    $verbose && echo
-    $verbose && echo -e "\t${b}Troubleshooting${c}"
-	$verbose && echo -e "\tIt is expected that the results of your script end"
-	$verbose && echo -e "\twith a prompt as recognized by the regular expression:"
-    $verbose && echo
-	$verbose && echo -e "\t\t\t${b}/(>|%|#|\\$) \$/${c}"
-    $verbose && echo
-	$verbose && echo -e "\tYour script will hang should the prompt not be detected."
-    $verbose && echo
+    if $verbose; then
+        echo -e "${b}DESCRIPTION${c}"
+        echo -e "\tThe primary goal of this script is to provide a secure method"
+        echo -e "\tfor executing commands on remote hosts as root without sudo."
+        echo
+        echo -e "\tNote that commands can be provided via file or STDIN."
+        echo
+        echo -e "\t${b}Running as Root${c}"
+        echo -e "\tRunning as root will require that a root password be "
+        echo -e "\tprovided as a pattern where the letter 'X' (upper or lower case)"
+        echo -e "\twhen immediately followed by a number will be substituted"
+        echo -e "\twith the appropriate letter from the provided hostname."
+        echo
+        echo -e "\tExample:\t pattern: ${b}passX3wordx1X4${c}"
+        echo -e "\t\t\thostname: ${b}example.com${c}"
+        echo -e "\t\t\t  result: ${b}passAwordeM${c}"
+        echo
+        echo -e "\t${b}Troubleshooting${c}"
+        echo -e "\tIt is expected that the results of your script end"
+        echo -e "\twith a prompt as recognized by the regular expression:"
+        echo
+        echo -e "\t\t\t${b}/(>|%|#|\\$) \$/${c}"
+        echo
+        echo -e "\tYour script will hang should the prompt not be detected."
+        echo
+    fi
 
     echo -e "${b}OPTIONS${c}"
     echo -e "\t${b}-f${c} ${u}file${c}"
@@ -106,6 +105,7 @@ error () {
 #                     hostname=example.com
 get_password () {
     # REDO 20110503 - find out how to accomplish variable defs in solaris
+    # TODO 20110613 - implement shifting special characters to their appropriate "uppercase" character
     awk -v host="$1" -v pattern="$2" '
         function getletter(case_pos) {
             case=substr(case_pos, 1, 1)
@@ -123,7 +123,6 @@ get_password () {
             print pattern
         }'
 }
-
 
 # convert provided commands into expect commands
 insert_commands () {
@@ -145,7 +144,7 @@ insert_commands () {
         >> "$script"
 
     # replace #interact# token with expect code
-    sed -i '/^#interact#/ r /dev/stdin' $script <<'INTERACT'
+    sed '/^#interact#/ r /dev/stdin' $script > "${script}.tmp" <<'INTERACT'
 send_user "\n\n                   ##      Entering Interactive Mode      ##\n"
 send_user "                   ### type \"#x\" to end your interaction ###\n"
 send "\r"
@@ -163,7 +162,7 @@ interact {
 INTERACT
 
     # remove interact token
-    sed -i '/^#interact/d' "$script"
+    sed '/^#interact/d' "${script}.tmp" > "$script"
 
     # shift expect args if root password is provided
     $su_do && count=1
@@ -174,7 +173,7 @@ INTERACT
         count=$(( $count+1 ))
 
         # remove password token
-        sed -i "$line r /dev/stdin" "$script" < <(
+        sed "$line r /dev/stdin" "$script" > "${script}.tmp" < <(
             echo "set password${count} [lindex \$argv $count]"
             for i in $(seq $password_count); do
                 echo 'sleep 1'
@@ -182,8 +181,10 @@ INTERACT
             done
         )
 
-        sed -i "${line}d" "$script"
+        sed "${line}d" "${script}.tmp" > "$script"
     done
+
+    rm -f "${script}.tmp"
 }
 
 # sanity check
@@ -193,37 +194,31 @@ INTERACT
 [[ "$(which expect)" ]] || error 'expect command is not available'
 
 # process arguments
-while getopts :hrf: OPTION; do
-    case "$OPTION" in
-        f)
-            [[ ! -r "$OPTARG" ]] && error 'cannot read provided command file'
-
-            commands=$(cat "$OPTARG")
-
-            shift $(($OPTIND-1))
-            ;;
-        r)
-            su_do=true
-            password_prompts=( "Enter Root Password Pattern" )
-
-            #FIXME 20110610 - -r combined with -f causes one to be consumed
-#             shift
-            ;;
-        h)
+for arg in $@; do
+    case "$arg" in
+        -h)
             print_usage 'verbose' >&2
             exit 0
             ;;
-        \:)
-            error "missing argument for option: -$OPTARG"
+        -r)
+            su_do=true
+            password_prompts=( "Enter Root Password Pattern" )
             ;;
-        \?)
-            error "unknown option: -$OPTARG"
+        -f)
+            commands='-f'
+            ;;
+         *)
+            if [[ "$commands" != '-f' ]]; then
+                hosts+="$arg"
+            else
+                [[ ! -r "$arg" ]] && error 'cannot read provided command file'
+                commands=$(cat "$arg")
+            fi
             ;;
     esac
 done
 
-hosts=( $@ )
-[[ ${#hosts[*]} -ne 0 ]] || error 'no hosts provided'
+[[ ${#hosts[*]} -eq 0 ]] && error 'no hosts provided'
 
 # check for commands from stdin
 if [[ -z "$commands" ]]; then

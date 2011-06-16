@@ -18,6 +18,9 @@
 # enable strict error checking
 set -ue
 
+# os check
+[[ "$(uname -s)" != 'SunOs' ]] || { echo 'ERROR: this script is known not to work on Solaris'; exit 1; }
+
 # dependency check
 [[ "$(which expect)" ]] || { echo 'ERROR: expect command is not available'; exit 1; }
 
@@ -94,6 +97,8 @@ expect "*sword:" {
 #COMMANDS#
 
 # SUDO: LOGOUT #
+        expect -re $prompt
+        log_user 0
         # exiting root session
         send "exit\r"
     }
@@ -189,20 +194,49 @@ error () {
 #                     pattern=passX3wordx1X4
 #                     hostname=example.com
 get_password () {
-    # REDO 20110503 - find out how to accomplish variable defs in solaris
-    # TODO 20110613 - implement shifting special characters to their appropriate "uppercase" character
     awk -v host="$1" -v pattern="$2" '
         function getletter(case_pos) {
             case=substr(case_pos, 1, 1)
             pos=substr(case_pos, 2)
+            char=(case == "X") ? toupper(substr(host, pos, 1)) : tolower(substr(host, pos, 1))
 
-            return (case == "X") ? toupper(substr(host, pos, 1)) : tolower(substr(host, pos, 1))
+            if (char == 1) {
+                return "!"
+            } else if (char == 2) {
+                return "@"
+            } else if (char == 3) {
+                return "#"
+            } else if (char == 4) {
+                return "$"
+            } else if (char == 5) {
+                return "%"
+            } else if (char == 6) {
+                return "^"
+            } else if (char == 7) {
+                return "&"
+            } else if (char == 8) {
+                return "*"
+            } else if (char == 9) {
+                return "("
+            } else if (char == 0) {
+                return ")"
+            } else if (char == "-") {
+                return "_"
+            } else if (char == ".") {
+                return ">"
+            } else {
+                return char
+            }
         }
 
         BEGIN {
             do {
                 idx = match(pattern, /[xX][0-9]/)
-                pattern=substr(pattern, 0, idx) getletter(substr(pattern, idx, RLENGTH)) substr(pattern, idx+RLENGTH)
+                token = substr(pattern, RSTART, RLENGTH)
+                letter = getletter(token)
+                if (idx != 0) {
+                    gsub(token, letter, pattern)
+                }
             } while (idx != 0)
 
             print pattern
@@ -393,9 +427,7 @@ for host in "${hosts[@]}"; do
             done
         fi
 
-        cp "$script" ~/expect_script
-
-        expect -f "$script" "$host" "${passwords[@]-}"
+       expect -f "$script" "$host" "${passwords[@]-}"
     else
         echo -e "\n$(echo "#   $host Unavailable   #" | tr '[:lower:]' '[:upper:]')"
         continue

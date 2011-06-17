@@ -376,7 +376,6 @@ run_hosts () {
                     rm -f ${tmp_dir}/${finished}-*.log
                     ((finished+=1))
                 fi
-                sleep 1
             done
         } &
 
@@ -488,6 +487,9 @@ if [[ -z "$commands" ]]; then
         error 'no commands provided'
     fi
 fi
+
+# sanity check
+[[ $concurrency -gt 1 ]] && grep -q '^#interact#' <<<"$commands" && error '#interact# is not allowed when combined with concurrency'
 
 # prompt user to continue
 echo -e "\nCOMMANDS:"

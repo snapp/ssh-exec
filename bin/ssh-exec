@@ -25,9 +25,10 @@ set -ue
 [[ "$(which expect)" ]] || { echo 'ERROR: expect command is not available'; exit 1; }
 
 prog=$(basename $0)
-version=0.9.8
+version=0.9.9
 
 commands=
+concurrency=1
 password_patterns=( )
 password_prompts=( )
 hosts=( )
@@ -37,7 +38,7 @@ tmp_dir="$(mktemp -dt $prog.XXXXX)" || error 'cannot create temp directory!'
 script="${tmp_dir}/commands.exp"
 
 trap "rm -rf $tmp_dir;exit;" EXIT
-trap 'stty echo;rm -rf $tmp_dir;echo -e "\nAborted!";exit;' INT TERM
+trap 'stty echo; cat $tmp_dir/*.{running,log} 2>/dev/null; echo -e "\nAborted!" >&2; rm -rf $tmp_dir; jobs -p | xargs kill 2>/dev/null; exit;' INT TERM
 
 # initialize expect script used during ssh session
 cat > "$script" <<'EXPECT'
@@ -69,12 +70,12 @@ expect "*nter passphrase" {
     send_user "\n\n                   # Accepting Authenticity: $host #\n"
     send "yes\r"
     expect -re $prompt {
-        send_user "\n\n                   #       Connect:    $host      #\n"
+        send_user "\n\n                   #       Connect:     $host       #\n"
         send "\r"
         log_user 1
     }
 } -re $prompt {
-    send_user "\n\n                   #       Connect:    $host      #\n"
+    send_user "\n\n                   #       Connect:     $host       #\n"
     send "\r"
     log_user 1
 }
@@ -110,7 +111,7 @@ if {$connected} {
     expect -re $prompt
     log_user 0
     send "exit\r"
-    send_user "\n\n                   #       Disconnect: $host      #\n"
+    send_user "\n\n                   #       Disconnect:  $host       #\n"
 }
 EXPECT
 
@@ -137,7 +138,7 @@ print_usage () {
     fi
 
     echo -e "${b}SYNOPSIS${c}"
-    echo -e "\t${b}$prog${c} [${b}-hr${c}] [${b}-f${c} ${u}file${c}] ${u}host1..host2..${c}"
+    echo -e "\t${b}$prog${c} [${b}-hr${c}] [${b}-c${c} ${u}count${c}] [${b}-f${c} ${u}file${c}] ${u}host1..host2..${c}"
     echo
 
     if $verbose; then
@@ -168,6 +169,9 @@ print_usage () {
     fi
 
     echo -e "${b}OPTIONS${c}"
+    echo -e "\t${b}-c${c} ${u}count${c}"
+    echo -e "\t\tthe number of jobs to run concurrently"
+    echo
     echo -e "\t${b}-f${c} ${u}file${c}"
     echo -e "\t\tthe file containing commands to be executed"
     echo
@@ -277,6 +281,10 @@ get_password_patterns () {
 
 # convert provided commands into expect commands
 generate_script () {
+    local count
+
+    count=0
+
     # remove su code from expect script
     if ! $su_do; then
         sed '/SUDO: LO/,/SUDO: LO/d' "$script" > "${script}.tmp"
@@ -324,7 +332,7 @@ INTERACT
     # replace #password# token with expect code
     while grep -q '^#password' "$script"; do
         read line password_count <<<$(awk -F: '/^#password/ {if ($2) {print NR,$2} else {print NR,1}; exit}' "$script")
-        count=$(( $count+1 ))
+        ((count+=1))
         password_count=${password_count%#}
 
         # remove password token
@@ -342,12 +350,104 @@ INTERACT
     rm -f "${script}.tmp"
 }
 
-# sanity check
-[[ $# -lt 1 ]] && error 'not enough arguments provided'
+# execute expect script against provided host
+#
+# NOTE: if you attempt to connect to the same host multiple times
+#       concurrently, you will likely see failures due to the speed
+#       in which the connections are attempted
+#
+# $1 - host - the host to run script against
+run_hosts () {
+    local count host logger_pid passwords total
+
+    count=1
+    total=$#
+
+    # watch for finished host output to print to stdout
+    if [[ $concurrency -gt 1 ]]; then
+        finished=1
+
+        {
+            while [[ $finished -le $total ]]; do
+                if [[ -r $(echo ${tmp_dir}/${finished}-*.log) ]]; then
+                    echo -e "\nJob $finished of $total Completed" |  tr '[:lower:]' '[:upper:]' >&2
+
+                    cat ${tmp_dir}/${finished}-*.log
+                    rm -f ${tmp_dir}/${finished}-*.log
+                    ((finished+=1))
+                fi
+                sleep 1
+            done
+        } &
+
+       logger_pid=$!
+    fi
+
+    while [[ $# -gt 0 ]]; do
+        passwords=( )
+        host="$1"
+
+        if [[ $concurrency -gt 1 ]]; then
+            running=$(jobs -p | grep -v $logger_pid | wc -l)
+
+            if [[ $running -lt $concurrency ]]; then
+                echo -e "\nSpawning job $count of $total for $host" |  tr '[:lower:]' '[:upper:]' >&2
+
+                {
+                    # run script if host is available
+                    if ping -qn -c1 "$host" 2>&1 | grep -q '1.*received'; then
+                        # convert patterns to host based passwords
+                        if [[ ${#password_patterns[*]} -gt 0 ]]; then
+                            for pattern in "${password_patterns[@]}"; do
+                                passwords+=( $(get_password $host $pattern) )
+                            done
+                        fi
+
+                       expect -f "$script" "$host" "${passwords[@]-}" > "${tmp_dir}/${count}-${host}.running"
+                       mv "${tmp_dir}/${count}-${host}.running" "${tmp_dir}/${count}-${host}.log"
+                    else
+                        echo -e "\n                   #       UNAVAILABLE: $host      #" > "${tmp_dir}/${count}-${host}.log"
+                        continue
+                    fi
+                } &
+
+                ((count+=1))
+                shift
+            fi
+        else
+            echo -e "\nSpawning job $count of $total for $host" |  tr '[:lower:]' '[:upper:]' >&2
+
+            # run script if host is available
+            if ping -qn -c1 "$host" 2>&1 | grep -q '1.*received'; then
+                # convert patterns to host based passwords
+                if [[ ${#password_patterns[*]} -gt 0 ]]; then
+                    for pattern in "${password_patterns[@]}"; do
+                        passwords+=( $(get_password $host $pattern) )
+                    done
+                fi
+
+               expect -f "$script" "$host" "${passwords[@]-}"
+            else
+                echo -e "\n                   #       UNAVAILABLE: $host      #"
+                continue
+            fi
+
+            ((count+=1))
+            shift
+        fi
+    done
+
+    wait
+}
+
+
 
 # process arguments
 for arg in $@; do
     case "$arg" in
+        -c)
+            concurrency='-c'
+        ;;
         -h)
             print_usage 'verbose' >&2
             exit 0
@@ -360,11 +460,13 @@ for arg in $@; do
             commands='-f'
             ;;
          *)
-            if [[ "$commands" != '-f' ]]; then
-                hosts+=( "$arg" )
-            else
+            if [[ "$concurrency" == '-c' ]] && [[ "$arg" =~ ^[0-9]+$ ]]; then
+                    concurrency=$arg
+            elif [[ "$commands" == '-f' ]]; then
                 [[ ! -r "$arg" ]] && error 'cannot read provided command file'
                 commands=$(cat "$arg")
+            else
+                hosts+=( "$arg" )
             fi
             ;;
     esac
@@ -372,6 +474,9 @@ done
 
 # sanity check
 [[ ${#hosts[*]} -eq 0 ]] && error 'no hosts provided'
+
+# set default concurrecy if number was not provided
+[[ "$concurrency" == '-c' ]] && concurrency=10
 
 # capture commands from stdin
 if [[ -z "$commands" ]]; then
@@ -413,25 +518,6 @@ get_password_patterns
 generate_script
 
 # run generated script against all provided hosts
-for host in "${hosts[@]}"; do
-    passwords=( )
-
-    trap 'rm -rf $tmp_dir;echo -e "\nAborted!";break;exit;'  INT TERM
-
-    # run script if host is available
-    if ping -qn -c1 "$host" 2>&1 | grep -q '1.*received'; then
-        # convert patterns to host based passwords
-        if [[ ${#password_patterns[*]} -gt 0 ]]; then
-            for pattern in "${password_patterns[@]}"; do
-                passwords+=( $(get_password $host $pattern) )
-            done
-        fi
-
-       expect -f "$script" "$host" "${passwords[@]-}"
-    else
-        echo -e "\n$(echo "#   $host Unavailable   #" | tr '[:lower:]' '[:upper:]')"
-        continue
-    fi
-done
+run_hosts ${hosts[@]}
 
 exit 0

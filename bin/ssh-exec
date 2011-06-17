@@ -15,8 +15,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# enable strict error checking
-set -ue
+# enable unbound variable checking
+set -u
+
+# FIXME 20110617 - figure out why ssh-exec process is left running
 
 # os check
 [[ "$(uname -s)" != 'SunOs' ]] || { echo 'ERROR: this script is known not to work on Solaris'; exit 1; }
@@ -25,10 +27,12 @@ set -ue
 [[ "$(which expect)" ]] || { echo 'ERROR: expect command is not available'; exit 1; }
 
 prog=$(basename $0)
-version=0.9.9
+version=1.0
 
 commands=
 concurrency=1
+load_ssh_agent=false
+output=/dev/null
 password_patterns=( )
 password_prompts=( )
 hosts=( )
@@ -37,8 +41,8 @@ su_do=false
 tmp_dir="$(mktemp -dt $prog.XXXXX)" || error 'cannot create temp directory!'
 script="${tmp_dir}/commands.exp"
 
-trap "rm -rf $tmp_dir;exit;" EXIT
-trap 'stty echo; cat $tmp_dir/*.{running,log} 2>/dev/null; echo -e "\nAborted!" >&2; rm -rf $tmp_dir; jobs -p | xargs kill 2>/dev/null; exit;' INT TERM
+trap 'rm -rf $tmp_dir; $load_ssh_agent && ssh_agent_destroy; exit;' EXIT
+trap 'stty echo; cat $tmp_dir/*.{running,log} 2>/dev/null; echo -e "\nAborted!" >&2; rm -rf $tmp_dir; jobs -p | xargs kill 2>/dev/null; $load_ssh_agent && ssh_agent_destroy; exit;' INT TERM
 
 # initialize expect script used during ssh session
 cat > "$script" <<'EXPECT'
@@ -138,7 +142,7 @@ print_usage () {
     fi
 
     echo -e "${b}SYNOPSIS${c}"
-    echo -e "\t${b}$prog${c} [${b}-hr${c}] [${b}-c${c} ${u}count${c}] [${b}-f${c} ${u}file${c}] ${u}host1..host2..${c}"
+    echo -e "\t${b}$prog${c} [${b}-hr${c}] [${b}-c${c} ${u}count${c}] [${b}-f${c} ${u}commands file${c}] [${b}-o${c} ${u}output file${c}] ${u}host1..host2..etc${c}"
     echo
 
     if $verbose; then
@@ -176,6 +180,9 @@ print_usage () {
     echo -e "\t\tthe file containing commands to be executed"
     echo
     echo -e "\t${b}-h${c}\tdisplay this help and exit"
+    echo
+    echo -e "\t${b}-o${c} ${u}file${c}"
+    echo -e "\t\tthe file to where stdout should be logged to"
     echo
     echo -e "\t${b}-r${c}\trun commands as root"
     echo
@@ -350,6 +357,27 @@ INTERACT
     rm -f "${script}.tmp"
 }
 
+# initialize ssh agent
+ssh_agent_init () {
+    echo -e "\nINITIALIZING SSH AGENT" >&2
+
+    eval $(ssh-agent | sed '/echo Agent/d')
+
+    # load all dsa & rsa keys (excluding symlinks)
+    for key in $HOME/.ssh/*_?sa; do
+        [[ ! -h "$key" ]] && ssh-add "$key"
+    done
+}
+
+# destroy ssh agent
+ssh_agent_destroy () {
+    echo -e "\nDESTROYING SSH AGENT" >&2
+
+    kill $SSH_AGENT_PID
+    export SSH_AGENT_PID=
+    export SSH_AUTH_SOCK=
+}
+
 # execute expect script against provided host
 #
 # NOTE: if you attempt to connect to the same host multiple times
@@ -446,10 +474,16 @@ for arg in $@; do
     case "$arg" in
         -c)
             concurrency='-c'
-        ;;
+            ;;
+        -c[0-9]*)
+            concurrency=${arg#-c}
+            ;;
         -h)
             print_usage 'verbose' >&2
             exit 0
+            ;;
+        -o)
+            output='-o'
             ;;
         -r)
             su_do=true
@@ -464,6 +498,8 @@ for arg in $@; do
             elif [[ "$commands" == '-f' ]]; then
                 [[ ! -r "$arg" ]] && error 'cannot read provided command file'
                 commands=$(cat "$arg")
+            elif [[ "$output" == '-o' ]]; then
+                output="$arg"
             else
                 hosts+=( "$arg" )
             fi
@@ -492,15 +528,42 @@ fi
 [[ $concurrency -gt 1 ]] && grep -q '^#interact#' <<<"$commands" && error '#interact# is not allowed when combined with concurrency'
 
 # prompt user to continue
-echo -e "\nCOMMANDS:"
-while read cmd;  do
-    echo -e "\t$cmd"
-done <<<"$commands"
+{
+    echo -e "\nNOTE:"
+    if [[ $concurrency -gt 1 ]]; then
+        echo -e "\tCommands will be run against $concurrency systems at a time."
+    else
+        echo -e '\tCommands will be run against each system one at a time.'
+    fi
 
-echo -e "\nHOSTS:"
-for host in "${hosts[@]}"; do
-    echo -e "\t$host"
-done
+    echo -e "\nCOMMANDS:"
+    while read cmd;  do
+        echo -e "\t$cmd"
+    done <<<"$commands"
+
+    echo -e "\nHOSTS:"
+    for host in "${hosts[@]}"; do
+        echo -e "\t$host"
+    done
+
+    # check for active ssh-agent
+    if ! ssh-add -l >/dev/null 2>&1; then
+        echo -e '\nWARNING:'
+        echo -e '\tYou currently do not have any keys loaded into an ssh agent.'
+        echo
+        echo -e '\tIf you choose to continue an agent will be started for you.'
+        echo
+        echo -e '\tYou will then be prompted to enter the passphrase for any keys'
+        echo -e '\tfound in your ~/.ssh directory.  Note that you only need to'
+        echo -e '\tprovide the passphrase for the key necessary for the servers you'
+        echo -e '\tare executing against.  Simply hitting "Enter" when prompted for'
+        echo -e '\tan unnecessary key is sufficient to skip loading that key.'
+        echo
+        echo -e '\tThis agent will be destroyed when ssh-exec exits.'
+
+        load_ssh_agent=true
+    fi
+} | tee -a "$output"
 
 # flush stdin before prompting to continue
 0<&-
@@ -508,10 +571,14 @@ exec 0</dev/tty
 
 echo -e -n "\nAre you sure you want to continue [y/N]? "
 read continue
+
 if [[ ! "$continue" =~ y|Y ]]; then
     echo 'Aborted!'
     exit 0
 fi
+
+# load ssh-agent
+$load_ssh_agent && ssh_agent_init
 
 # collect password patterns from user
 get_password_patterns
@@ -520,6 +587,6 @@ get_password_patterns
 generate_script
 
 # run generated script against all provided hosts
-run_hosts ${hosts[@]}
+run_hosts ${hosts[@]} | tee -a "$output"
 
 exit 0

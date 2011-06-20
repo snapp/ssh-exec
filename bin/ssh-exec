@@ -18,8 +18,6 @@
 # enable unbound variable checking
 set -u
 
-# FIXME 20110617 - figure out why ssh-exec process is left running
-
 # os check
 [[ "$(uname -s)" != 'SunOs' ]] || { echo 'ERROR: this script is known not to work on Solaris'; exit 1; }
 
@@ -529,14 +527,16 @@ fi
 
 # prompt user to continue
 {
-    echo -e "\nNOTE:"
-    if [[ $concurrency -gt 1 ]]; then
-        echo -e "\tCommands will be run against $concurrency systems at a time."
+    if [[ ${#hosts[*]} -gt 1 ]]; then
+        if [[ $concurrency -gt 1 ]]; then
+            echo -e "\nCOMMANDS: (run concurrently $($su_do && echo 'as root ')on up to $concurrency systems at a time)"
+        else
+            echo -e "\nCOMMANDS: (run $($su_do && echo 'as root ')on each system one at a time)"
+        fi
     else
-        echo -e '\tCommands will be run against each system one at a time.'
+        echo -e "\nCOMMANDS:$($su_do && echo ' run as root'))"
     fi
 
-    echo -e "\nCOMMANDS:"
     while read cmd;  do
         echo -e "\t$cmd"
     done <<<"$commands"
@@ -548,20 +548,46 @@ fi
 
     # check for active ssh-agent
     if ! ssh-add -l >/dev/null 2>&1; then
-        echo -e '\nWARNING:'
+        echo -e '\nNOTE:'
         echo -e '\tYou currently do not have any keys loaded into an ssh agent.'
         echo
         echo -e '\tIf you choose to continue an agent will be started for you.'
         echo
         echo -e '\tYou will then be prompted to enter the passphrase for any keys'
-        echo -e '\tfound in your ~/.ssh directory.  Note that you only need to'
-        echo -e '\tprovide the passphrase for the key necessary for the servers you'
-        echo -e '\tare executing against.  Simply hitting "Enter" when prompted for'
-        echo -e '\tan unnecessary key is sufficient to skip loading that key.'
+        echo -e '\tfound in your ~/.ssh directory.'
+        echo
+        echo -e '\tNote: You only need to provide the passphrase for the key'
+        echo -e '\t      necessary for the servers you are executing against.'
+        echo
+        echo -e '\t      Simply hitting "Enter" when prompted for an unnecessary'
+        echo -e '\t      key is sufficient to skip loading that key.'
         echo
         echo -e '\tThis agent will be destroyed when ssh-exec exits.'
 
         load_ssh_agent=true
+    fi
+
+    warnings=( )
+    # hand-holding: check for commands that may exceed default timeout
+    if ! grep -q '^#timeout' <<<"$commands"; then
+        grep -q 'tripwire' <<<"$commands" && warnings+=("tripwire will likely cause the script to exceed the 10 second timeout\n\t\t- you will likely need to override the timeout period by using #timeout -1#\n\t\t- you may want to consider using the builtin #tripwire# token instead")
+    fi
+
+    # hand-holding: check for password change without password being provided
+    if ! grep -q '^#password:2' <<<"$commands"; then
+        grep -q 'passwd' <<<"$commands" && warnings+=("passwd will require the #password:2# token\n\t\t- you may want to consider using the builtin #passwd <username># token instead")
+    fi
+
+    # hand-holding: check for rm -rf
+    if grep -q 'rm -rf /' <<<"$commands"; then
+        warnings+=("rm -rf can be dangerous when automated!\n\t  make sure you double check the commands above before continuing")
+    fi
+
+    if [[ ${#warnings[*]} -gt 0 ]]; then
+        echo -e '\nWARNINGS:'
+        for warning in "${warnings[@]}"; do
+            echo -e "\t* $warning\n"
+        done
     fi
 } | tee -a "$output"
 

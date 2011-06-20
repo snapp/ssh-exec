@@ -122,14 +122,15 @@ EXPECT
 #
 # $1 - boolean determining if full formatted output should be printed
 print_usage () {
-    local verbose b u c
+    local verbose b c i u
 
     verbose=false
     [[ $# -gt 0 ]] && verbose=true
 
     b='\033[1m'
-    u='\033[4m'
     c='\033[0m'
+    i='\033[3m'
+    u='\033[4m'
 
     if $verbose; then
         echo "$prog $version" | tr '[:lower:]' '[:upper:]'
@@ -148,7 +149,9 @@ print_usage () {
         echo -e "\tThe primary goal of this script is to provide a secure method"
         echo -e "\tfor executing commands on remote hosts as root without sudo."
         echo
-        echo -e "\tNote that commands can be provided via file or STDIN."
+        echo -e "\t${b}Providing Commands${c}"
+        echo -e "\tCommands can be provided via file or STDIN."
+        echo -e "\tSee Below for examples."
         echo
         echo -e "\t${b}Running as Root${c}"
         echo -e "\tRunning as root will require that a root password be "
@@ -159,6 +162,10 @@ print_usage () {
         echo -e "\tExample:\t pattern: ${b}passX3wordx1X4${c}"
         echo -e "\t\t\thostname: ${b}example.com${c}"
         echo -e "\t\t\t  result: ${b}passAwordeM${c}"
+        echo
+        echo -e "\t${b}TOKENS${c}"
+        echo -e "\tssh-exec tokens are identified by a hash (#) at the start of"
+        echo -e "\ta line followed by one of the reserved words listed below."
         echo
         echo -e "\t${b}Troubleshooting${c}"
         echo -e "\tIt is expected that the results of your script end"
@@ -180,10 +187,115 @@ print_usage () {
     echo -e "\t${b}-h${c}\tdisplay this help and exit"
     echo
     echo -e "\t${b}-o${c} ${u}file${c}"
-    echo -e "\t\tthe file to where stdout should be logged to"
+    echo -e "\t\tthe file where stdout should be logged"
     echo
     echo -e "\t${b}-r${c}\trun commands as root"
     echo
+
+    if $verbose; then
+        echo -e "${b}TOKENS${c}"
+        echo -e "\t${b}#passwd ${u}<username>${c}${b}#${c}  ${i}(requires -r)${c}"
+        echo -e "\t\tInserts the commands for changing the provided username's password."
+        echo -e "\t\tIf no username is provided, user will default to root."
+        echo
+        echo -e "\t${b}#tripwire#${c} ${i}(requires -r)${c}"
+        echo -e "\t\tInserts the commands necessary for performing a tripwire update."
+        echo
+        echo -e "\t${b}#expect ${u}pattern${c}${b}#${c}"
+        echo -e "\t\tExplicitly look for a phrase using expect format prior to executing"
+        echo -e "\t\tthe next command."
+        echo
+        echo -e "\t${b}#interact#${c}"
+        echo -e "\t\tThis will pause automatic execution and allow you to execute commands"
+        echo -e "\t\tdirectly into the console.  When you are finished and would like to"
+        echo -e "\t\tgive control back to automatic execution, simply type ${b}#x${c}"
+        echo
+        echo -e "\t${b}#password${u}:<repeat>:<prompt contents>${c}${b}#${c}"
+        echo -e "\t\tThis token allows you to securely collect password patterns prior to"
+        echo -e "\t\truntime and then have them injected the number of times specified"
+        echo -e "\t\tvia the second argument."
+        echo -e "\t\tA custom prompt can also be provided as the third argument."
+        echo
+        echo -e "\t${b}#timeout${u} duration${c}${b}#${c}"
+        echo -e "\t\tOverride the default 10 second timeout that expect uses waiting"
+        echo -e "\t\tfor a prompt."
+        echo -e "\t\tTimeout is in seconds; while a value of -1 represents unlimited"
+        echo -e "\t\tIf no value is provided timeout will be reset to 10 seconds"
+        echo
+        echo -e "${b}EXAMPLES${c} - (examples are based on execution within a BASH shell)"
+        echo -e "\t${b}Executing simple one liners${c}"
+        echo -e "\tFor very simple scripts you can just use a here-string"
+        echo
+        echo -e "\t\t${i}ssh-exec example.com <<<'ls -la ~/.ssh'${c}"
+        echo
+        echo -e "\t${b}Executing multi-line scripts${c}"
+        echo -e "\tFor more complex scripts you can simply hit enter and type your script"
+        echo -e "\tcontents directly into stdin followed by ctrl-d to finish."
+        echo
+        echo -e "\tIf you would like to store your script within your shell's history you"
+        echo -e "\twould probably rather use a here-doc."
+        echo
+        echo -e "\tNOTE: The use of quotes around the EOF delimeter is to ensure the shell"
+        echo -e "\t      does not expand any variables within your script."
+        echo
+        echo -e "\t\t${i}ssh-exec example.com <<'EOF'"
+        echo -e "\t\tuptime"
+        echo -e "\t\tcat \$HOME/.ssh/authorized_keys"
+        echo -e "\t\ttail -n15 \$HOME/.bash_history"
+        echo -e "\t\tEOF${c}"
+        echo
+        echo -e "\t${b}Executing a command concurrently against multiple systems as root${c}"
+        echo
+        echo -e "\t\t${i}ssh-exec -r -c example-{1..50}.com <<<'cat /etc/shadow'"
+        echo
+        echo -e "\t${b}Use ssh-exec just to login to a list of servers for manual maintenance${c}"
+        echo
+        echo -e "\t\t${i}ssh-exec -r example-{1..50}.com <<<'#interact#'"
+        echo
+        echo -e "\t${b}Perform a standard tripwire update; overriding the default concurrency of 10${c}"
+        echo
+        echo -e "\t\t${i}ssh-exec -r -c25 example-{1..50}.com <<<'#tripwire#'"
+        echo
+        echo -e "\t${b}Change root password followed by tripwire update${c}"
+        echo
+        echo -e "\t\t${i}ssh-exec -r -c example-{1..50}.com <<'EOF'"
+        echo -e "\t\t#passwd#"
+        echo -e "\t\t#tripwire#"
+        echo -e "\t\tEOF${c}"
+        echo
+        echo -e "\t${b}Change testuser's password followed by tripwire update${c}"
+        echo
+        echo -e "\t\t${i}ssh-exec -r -c example-{1..50}.com <<'EOF'"
+        echo -e "\t\t#passwd testuser#"
+        echo -e "\t\t#tripwire#"
+        echo -e "\t\tEOF${c}"
+        echo
+        echo -e "\t${b}Override timeout period for long running script${c}"
+        echo
+        echo -e "\t\t${i}ssh-exec example.com <<'EOF'"
+        echo -e "\t\tuptime"
+        echo -e "\t\t#timeout -1#"
+        echo -e "\t\tsleep 20; echo 'sleep complete'"
+        echo -e "\t\tEOF${c}"
+        echo
+        echo -e "\t${b}Authenticating as root where su is not available${c}"
+        echo
+        echo -e "\tssh-exec uses ${b}su -${c} to gain root access.  If this is not available"
+        echo -e "\ton your system you may need to perform your own authentication to root."
+        echo
+        echo -e "\tHere is an example of how to do it using sudo:"
+        echo
+        echo -e "\tNOTE: The use of ${b}sleep 15${c} as a means of forcing a timeout should we be"
+        echo -e "\t      unable to gain root privileges"
+        echo
+        echo -e "\t\t${i}ssh-exec example.com <<'EOF'"
+        echo -e "\t\tsudo su -"
+        echo -e "\t\t#password::Enter your password for sudo#"
+        echo -e "\t\t[ \$(id -u) -eq 0 ] || sleep 15"
+        echo -e "\t\tcat /etc/shadow"
+        echo -e "\t\tEOF${c}"
+        echo
+    fi
 }
 
 # print error message followed by usage and exit

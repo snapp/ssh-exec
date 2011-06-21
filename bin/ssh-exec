@@ -163,10 +163,6 @@ print_usage () {
         echo -e "\t\t\thostname: ${b}example.com${c}"
         echo -e "\t\t\t  result: ${b}passAwordeM${c}"
         echo
-        echo -e "\t${b}TOKENS${c}"
-        echo -e "\tssh-exec tokens are identified by a hash (#) at the start of"
-        echo -e "\ta line followed by one of the reserved words listed below."
-        echo
         echo -e "\t${b}Troubleshooting${c}"
         echo -e "\tIt is expected that the results of your script end"
         echo -e "\twith a prompt as recognized by the regular expression:"
@@ -179,7 +175,10 @@ print_usage () {
 
     echo -e "${b}OPTIONS${c}"
     echo -e "\t${b}-c${c} ${u}count${c}"
-    echo -e "\t\tthe number of jobs to run concurrently"
+    echo -e "\t\tthe number of jobs to run concurrently; defaults to 10 if no value is provided"
+    echo -e "\t\t\tNOTE: While the script will execute in separate threads up to the concurrency"
+    echo -e "\t\t\t      level you provide, the system results will always be returned in"
+    echo -e "\t\t\t      order that you specified your hosts."
     echo
     echo -e "\t${b}-f${c} ${u}file${c}"
     echo -e "\t\tthe file containing commands to be executed"
@@ -194,11 +193,14 @@ print_usage () {
 
     if $verbose; then
         echo -e "${b}TOKENS${c}"
-        echo -e "\t${b}#passwd ${u}<username>${c}${b}#${c}  ${i}(requires -r)${c}"
+        echo -e "\tssh-exec tokens are identified by a hash (#) at the start of"
+        echo -e "\ta line followed by one of the reserved words listed below."
+        echo
+        echo -e "\t${b}#passwd ${u}<username>${c}${b}#${c}"
         echo -e "\t\tInserts the commands for changing the provided username's password."
         echo -e "\t\tIf no username is provided, user will default to root."
         echo
-        echo -e "\t${b}#tripwire#${c} ${i}(requires -r)${c}"
+        echo -e "\t${b}#tripwire#${c}"
         echo -e "\t\tInserts the commands necessary for performing a tripwire update."
         echo
         echo -e "\t${b}#expect ${u}pattern${c}${b}#${c}"
@@ -216,7 +218,7 @@ print_usage () {
         echo -e "\t\tvia the second argument."
         echo -e "\t\tA custom prompt can also be provided as the third argument."
         echo
-        echo -e "\t${b}#timeout${u} duration${c}${b}#${c}"
+        echo -e "\t${b}#timeout ${u}duration${c}${b}#${c}"
         echo -e "\t\tOverride the default 10 second timeout that expect uses waiting"
         echo -e "\t\tfor a prompt."
         echo -e "\t\tTimeout is in seconds; while a value of -1 represents unlimited"
@@ -224,7 +226,7 @@ print_usage () {
         echo
         echo -e "${b}EXAMPLES${c} - (examples are based on execution within a BASH shell)"
         echo -e "\t${b}Executing simple one liners${c}"
-        echo -e "\tFor very simple scripts you can just use a here-string"
+        echo -e "\tFor very simple scripts you can just use a here-string (i.e. <<<)"
         echo
         echo -e "\t\t${i}ssh-exec example.com <<<'ls -la ~/.ssh'${c}"
         echo
@@ -233,7 +235,7 @@ print_usage () {
         echo -e "\tcontents directly into stdin followed by ctrl-d to finish."
         echo
         echo -e "\tIf you would like to store your script within your shell's history you"
-        echo -e "\twould probably rather use a here-doc."
+        echo -e "\twould probably rather use a here-doc (i.e. <<'EOF')."
         echo
         echo -e "\tNOTE: The use of quotes around the EOF delimeter is to ensure the shell"
         echo -e "\t      does not expand any variables within your script."
@@ -244,17 +246,17 @@ print_usage () {
         echo -e "\t\ttail -n15 \$HOME/.bash_history"
         echo -e "\t\tEOF${c}"
         echo
-        echo -e "\t${b}Executing a command concurrently against multiple systems as root${c}"
+        echo -e "\t${b}Execute a command concurrently against multiple systems as root${c}"
         echo
         echo -e "\t\t${i}ssh-exec -r -c example-{1..50}.com <<<'cat /etc/shadow'"
         echo
-        echo -e "\t${b}Use ssh-exec just to login to a list of servers for manual maintenance${c}"
+        echo -e "\t${b}Login to a list of servers for manual maintenance${c}"
         echo
         echo -e "\t\t${i}ssh-exec -r example-{1..50}.com <<<'#interact#'"
         echo
         echo -e "\t${b}Perform a standard tripwire update; overriding the default concurrency of 10${c}"
         echo
-        echo -e "\t\t${i}ssh-exec -r -c25 example-{1..50}.com <<<'#tripwire#'"
+        echo -e "\t\t${i}ssh-exec -r -c 25 example-{1..50}.com <<<'#tripwire#'"
         echo
         echo -e "\t${b}Change root password followed by tripwire update${c}"
         echo
@@ -279,7 +281,6 @@ print_usage () {
         echo -e "\t\tEOF${c}"
         echo
         echo -e "\t${b}Authenticating as root where su is not available${c}"
-        echo
         echo -e "\tssh-exec uses ${b}su -${c} to gain root access.  If this is not available"
         echo -e "\ton your system you may need to perform your own authentication to root."
         echo

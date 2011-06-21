@@ -432,6 +432,8 @@ expect -re $prompt
 interact {
     \#x {
         send_user "\n\n                   ##      Exiting Interactive Mode       ##\n"
+        # send ctrl-c to force a prompt
+        send \003
         return
     }
     -o eof {

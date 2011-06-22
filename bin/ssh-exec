@@ -60,7 +60,7 @@ set root_password [lindex $argv 2]
 set sudo_password [lindex $argv 3]
 set login_password [lindex $argv 4]
 
-log_user 1
+log_user 0
 
 spawn -noecho ssh $username@$host
 set connected 1
@@ -90,7 +90,7 @@ expect "*nter passphrase" {
         log_user 1
     }
 } "*ssword" {
-    if ([string equal "$login_password" '#null#']) {
+    if {"$login_password" == "#null#"} {
         send_user "\n\n                   #  Aborted! - No Login Password Available: $host  #\n"
         return
     }
@@ -230,9 +230,9 @@ print_usage () {
     echo -e "\t${b}-o${c} ${u}file${c}"
     echo -e "\t\tthe file where stdout should be logged"
     echo
-    echo -e "\t${b}-r${c}\trun commands as root via su - authentication"
+    echo -e "\t${b}-r${c}\trun commands as root via 'su -' authentication"
     echo
-    echo -e "\t${b}-R${c}\trun commands as root via sudo su - authentication"
+    echo -e "\t${b}-R${c}\trun commands as root via 'sudo su -' authentication"
     echo
     echo -e "\t${b}-u${c} ${u}username${c}"
     echo -e "\t\tthe username used during initial ssh login"
@@ -331,22 +331,6 @@ print_usage () {
         echo -e "\t\tsleep 20; echo 'sleep complete'"
         echo -e "\t\tEOF${c}"
         echo
-        echo -e "\t${b}Authenticating as root where su is not available${c}"
-        echo -e "\tssh-exec uses ${b}su -${c} to gain root access.  If this is not available"
-        echo -e "\ton your system you may need to perform your own authentication to root."
-        echo
-        echo -e "\tHere is an example of how to do it using sudo:"
-        echo
-        echo -e "\tNOTE: The use of ${b}sleep 15${c} as a means of forcing a timeout should we be"
-        echo -e "\t      unable to gain root privileges"
-        echo
-        echo -e "\t\t${i}ssh-exec example.com <<'EOF'"
-        echo -e "\t\tsudo su -"
-        echo -e "\t\t#password::Enter your password for sudo#"
-        echo -e "\t\t[ \$(id -u) -eq 0 ] || sleep 15"
-        echo -e "\t\tcat /etc/shadow"
-        echo -e "\t\tEOF${c}"
-        echo
     fi
 }
 
@@ -367,61 +351,53 @@ error () {
 #                     pattern=passX3wordx1X4
 #                     hostname=example.com
 get_password () {
-    local password
+    awk -v host="$1" -v pattern="${2-}" '
+        function getletter(case_pos) {
+            case=substr(case_pos, 1, 1)
+            pos=substr(case_pos, 2)
+            char=(case == "X") ? toupper(substr(host, pos, 1)) : tolower(substr(host, pos, 1))
 
-    password=$(
-        awk -v host="$1" -v pattern="${2-}" '
-            function getletter(case_pos) {
-                case=substr(case_pos, 1, 1)
-                pos=substr(case_pos, 2)
-                char=(case == "X") ? toupper(substr(host, pos, 1)) : tolower(substr(host, pos, 1))
-
-                if (char == 1) {
-                    return "!"
-                } else if (char == 2) {
-                    return "@"
-                } else if (char == 3) {
-                    return "#"
-                } else if (char == 4) {
-                    return "$"
-                } else if (char == 5) {
-                    return "%"
-                } else if (char == 6) {
-                    return "^"
-                } else if (char == 7) {
-                    return "&"
-                } else if (char == 8) {
-                    return "*"
-                } else if (char == 9) {
-                    return "("
-                } else if (char == 0) {
-                    return ")"
-                } else if (char == "-") {
-                    return "_"
-                } else if (char == ".") {
-                    return ">"
-                } else {
-                    return char
-                }
+            if (char == 1) {
+                return "!"
+            } else if (char == 2) {
+                return "@"
+            } else if (char == 3) {
+                return "#"
+            } else if (char == 4) {
+                return "$"
+            } else if (char == 5) {
+                return "%"
+            } else if (char == 6) {
+                return "^"
+            } else if (char == 7) {
+                return "&"
+            } else if (char == 8) {
+                return "*"
+            } else if (char == 9) {
+                return "("
+            } else if (char == 0) {
+                return ")"
+            } else if (char == "-") {
+                return "_"
+            } else if (char == ".") {
+                return ">"
+            } else {
+                return char
             }
+        }
 
-            BEGIN {
-                do {
-                    idx = match(pattern, /[xX][0-9]/)
-                    token = substr(pattern, RSTART, RLENGTH)
-                    letter = getletter(token)
-                    if (idx != 0) {
-                        gsub(token, letter, pattern)
-                    }
-                } while (idx != 0)
+        BEGIN {
+            do {
+                idx = match(pattern, /[xX][0-9]/)
+                token = substr(pattern, RSTART, RLENGTH)
+                letter = getletter(token)
+                if (idx != 0) {
+                    gsub(token, letter, pattern)
+                }
+            } while (idx != 0)
 
-                print pattern
-            }'
-    )
-
-    sed -e 's|"|\\"|g' \
-        -e 's|^|"|' \
-        -e 's|$|"|' <<<"$password"
+            print pattern
+        }' | sed -e 's| |\ |g'
 }
 
 # collect password patterns from user
@@ -655,11 +631,11 @@ run_hosts () {
                         # convert patterns to host based passwords
                         if [[ ${#password_patterns[*]} -gt 0 ]]; then
                             for pattern in "${password_patterns[@]}"; do
-                                passwords+=( $(get_password $host $pattern) )
+                                passwords+=( "$(get_password $host "${pattern-}")" )
                             done
                         fi
 
-                       expect -f "$script" "$username" "$host" "$(get_password $host ${root_password_pattern-})" "$(get_password $host ${sudo_password_pattern-})" "$(get_password $host "${login_password_pattern-}")" "${passwords[@]-}" > "${tmp_dir}/${count}-${host}.running"
+                       expect -f "$script" "$username" "$host" "$(get_password $host "${root_password_pattern-}")" "$(get_password $host "${sudo_password_pattern-}")" "$(get_password $host "${login_password_pattern-}")" "${passwords[@]-}" > "${tmp_dir}/${count}-${host}.running"
                        mv "${tmp_dir}/${count}-${host}.running" "${tmp_dir}/${count}-${host}.log"
                     else
                         echo -e "\n                   #       UNAVAILABLE: $host      #" > "${tmp_dir}/${count}-${host}.log"
@@ -678,11 +654,11 @@ run_hosts () {
                 # convert patterns to host based passwords
                 if [[ ${#password_patterns[*]} -gt 0 ]]; then
                     for pattern in "${password_patterns[@]}"; do
-                        passwords+=( $(get_password $host "${pattern-}") )
+                        passwords+=( "$(get_password $host "${pattern-}")" )
                     done
                 fi
 
-               echo expect -f "$script" "$username" "$host" $(get_password $host "${root_password_pattern-}") $(get_password $host "${sudo_password_pattern-}") $(get_password $host "${login_password_pattern-}") ${passwords[@]-}
+                expect -f "$script" "$username" "$host" "$(get_password $host "${root_password_pattern-}")" "$(get_password $host "${sudo_password_pattern-}")" "$(get_password $host "${login_password_pattern-}")" "${passwords[@]-}"
             else
                 echo -e "\n                   #       UNAVAILABLE: $host      #"
                 continue

@@ -29,12 +29,19 @@ version=1.0
 
 commands=
 concurrency=1
+hosts=( )
 load_ssh_agent=false
 output=/dev/null
+password_auth=false
 password_patterns=( )
 password_prompts=( )
-hosts=( )
-su_do=false
+root_password_pattern='#null#'
+ssh_agent=true
+su=false
+sudo=false
+sudo_password_pattern='#null#'
+login_password_pattern='#null#'
+username="$USER"
 
 tmp_dir="$(mktemp -dt $prog.XXXXX)" || error 'cannot create temp directory!'
 script="${tmp_dir}/commands.exp"
@@ -47,11 +54,15 @@ cat > "$script" <<'EXPECT'
 #!/usr/bin/expect
 set timeout 10
 set prompt "(>|%|#|\\$) $"
-set host [lindex $argv 0]
+set username [lindex $argv 0]
+set host [lindex $argv 1]
+set root_password [lindex $argv 2]
+set sudo_password [lindex $argv 3]
+set login_password [lindex $argv 4]
 
-log_user 0
+log_user 1
 
-spawn -noecho ssh $host
+spawn -noecho ssh $username@$host
 set connected 1
 
 expect_after {
@@ -64,9 +75,11 @@ expect_after {
     }
 }
 
-# user login
 expect "*nter passphrase" {
     send_user "\n\n                   #  Aborted! - Missing Passphrase: $host  #\n"
+    return
+} "*denied" {
+    send_user "\n\n                   #  Aborted! - Permission Denied: $host  #\n"
     return
 } "*yes/no" {
     send_user "\n\n                   # Accepting Authenticity: $host #\n"
@@ -76,37 +89,69 @@ expect "*nter passphrase" {
         send "\r"
         log_user 1
     }
+} "*ssword" {
+    if ([string equal "$login_password" '#null#']) {
+        send_user "\n\n                   #  Aborted! - No Login Password Available: $host  #\n"
+        return
+    }
+
+    send "$login_password\r"
+    expect -re $prompt {
+        send_user "\n\n                   #       Connect:     $host       #\n"
+        send "\r"
+        log_user 1
+    } "*ssword" {
+        send_user "\n\n                   #  Aborted! - Invalid Login Password: $host  #\n"
+        return
+    }
 } -re $prompt {
     send_user "\n\n                   #       Connect:     $host       #\n"
     send "\r"
     log_user 1
 }
 
-# SUDO: LOGIN #
-set password1 [lindex $argv 1]
-sleep 1
-send "su -\r"
-expect "*sword:" {
-    send "$password1\r"
-    expect "su: *" {
-        send "exit\r"
-        send_user "\n\n                   #  Aborted! - Invalid Root Password: $host  #\n"
-        exit
+if {"$root_password" != "#null#"} {
+    sleep 1
+    send "su -\r"
+    expect "*sword:" {
+        send "$root_password\r"
+        expect "su: *" {
+            send "exit\r"
+            send_user "\n\n                   #  Aborted! - Invalid Root Password: $host  #\n"
+            exit
+        } -re $prompt {
+            # send ctrl-c to force a prompt
+            send \003
+        }
+    }
+}
+
+if {"$sudo_password" != "#null#"} {
+    sleep 1
+    send "sudo su -\r"
+    expect "*sword" {
+        send "$sudo_password\r"
+        expect "*sword" {
+            # send ctrl-c to force a prompt
+            send \003
+            send "exit\r"
+            send_user "\n\n                   #  Aborted! - Invalid SUDO Password: $host  #\n"
+            exit
+        }
     } -re $prompt {
-        # send ctrl-c to force a prompt
-        send \003
-# SUDO: LOGIN #
+        sleep 1
+    }
+}
 
 #COMMANDS#
 
-# SUDO: LOGOUT #
-        expect -re $prompt
+if {"$root_password" != "#null#" || "$sudo_password" != "#null#"} {
+    expect -re $prompt {
         log_user 0
         # exiting root session
         send "exit\r"
     }
 }
-# SUDO: LOGOUT #
 
 if {$connected} {
     sleep 1
@@ -141,23 +186,20 @@ print_usage () {
     fi
 
     echo -e "${b}SYNOPSIS${c}"
-    echo -e "\t${b}$prog${c} [${b}-hr${c}] [${b}-c${c} ${u}count${c}] [${b}-f${c} ${u}commands file${c}] [${b}-o${c} ${u}output file${c}] ${u}host1..host2..etc${c}"
+    echo -e "\t${b}$prog${c} [${b}-hrRpP${c}] [${b}-c${c} ${u}count${c}] [${b}-f${c} ${u}commands file${c}] [${b}-o${c} ${u}output file${c}] [${b}-u${c} ${u}username${c}] ${u}host1..host2..etc${c}"
     echo
 
     if $verbose; then
         echo -e "${b}DESCRIPTION${c}"
-        echo -e "\tThe primary goal of this script is to provide a secure method"
-        echo -e "\tfor executing commands on remote hosts as root without sudo."
+        echo -e "\tThe goal of this script is to provide a secure method for"
+        echo -e "\texecuting scripts on remote hosts securely while also allowing"
+        echo -e "\tfor scripts to be executed as root."
         echo
-        echo -e "\t${b}Providing Commands${c}"
-        echo -e "\tCommands can be provided via file or STDIN."
-        echo -e "\tSee Below for examples."
-        echo
-        echo -e "\t${b}Running as Root${c}"
-        echo -e "\tRunning as root will require that a root password be "
-        echo -e "\tprovided as a pattern where the letter 'X' (upper or lower case)"
-        echo -e "\twhen immediately followed by a number will be substituted"
-        echo -e "\twith the appropriate letter from the provided hostname."
+        echo -e "\t${b}Password Handling${c}"
+        echo -e "\tPasswords processed by ssh-exec are expected to follow a pattern where"
+        echo -e "\tthe letter 'X' (upper or lower case) when immediately followed by a"
+        echo -e "\tnumber shall be substituted with the appropriate letter from the"
+        echo -e "\thostname currently being executed against."
         echo
         echo -e "\tExample:\t pattern: ${b}passX3wordx1X4${c}"
         echo -e "\t\t\thostname: ${b}example.com${c}"
@@ -188,7 +230,16 @@ print_usage () {
     echo -e "\t${b}-o${c} ${u}file${c}"
     echo -e "\t\tthe file where stdout should be logged"
     echo
-    echo -e "\t${b}-r${c}\trun commands as root"
+    echo -e "\t${b}-r${c}\trun commands as root via su - authentication"
+    echo
+    echo -e "\t${b}-R${c}\trun commands as root via sudo su - authentication"
+    echo
+    echo -e "\t${b}-u${c} ${u}username${c}"
+    echo -e "\t\tthe username used during initial ssh login"
+    echo
+    echo -e "\t${b}-p${c}\tprompt for user password; used if key login fails"
+    echo
+    echo -e "\t${b}-P${c}\tprompt for user password; disables spawn ssh-agent"
     echo
 
     if $verbose; then
@@ -316,57 +367,89 @@ error () {
 #                     pattern=passX3wordx1X4
 #                     hostname=example.com
 get_password () {
-    awk -v host="$1" -v pattern="$2" '
-        function getletter(case_pos) {
-            case=substr(case_pos, 1, 1)
-            pos=substr(case_pos, 2)
-            char=(case == "X") ? toupper(substr(host, pos, 1)) : tolower(substr(host, pos, 1))
+    local password
 
-            if (char == 1) {
-                return "!"
-            } else if (char == 2) {
-                return "@"
-            } else if (char == 3) {
-                return "#"
-            } else if (char == 4) {
-                return "$"
-            } else if (char == 5) {
-                return "%"
-            } else if (char == 6) {
-                return "^"
-            } else if (char == 7) {
-                return "&"
-            } else if (char == 8) {
-                return "*"
-            } else if (char == 9) {
-                return "("
-            } else if (char == 0) {
-                return ")"
-            } else if (char == "-") {
-                return "_"
-            } else if (char == ".") {
-                return ">"
-            } else {
-                return char
-            }
-        }
+    password=$(
+        awk -v host="$1" -v pattern="${2-}" '
+            function getletter(case_pos) {
+                case=substr(case_pos, 1, 1)
+                pos=substr(case_pos, 2)
+                char=(case == "X") ? toupper(substr(host, pos, 1)) : tolower(substr(host, pos, 1))
 
-        BEGIN {
-            do {
-                idx = match(pattern, /[xX][0-9]/)
-                token = substr(pattern, RSTART, RLENGTH)
-                letter = getletter(token)
-                if (idx != 0) {
-                    gsub(token, letter, pattern)
+                if (char == 1) {
+                    return "!"
+                } else if (char == 2) {
+                    return "@"
+                } else if (char == 3) {
+                    return "#"
+                } else if (char == 4) {
+                    return "$"
+                } else if (char == 5) {
+                    return "%"
+                } else if (char == 6) {
+                    return "^"
+                } else if (char == 7) {
+                    return "&"
+                } else if (char == 8) {
+                    return "*"
+                } else if (char == 9) {
+                    return "("
+                } else if (char == 0) {
+                    return ")"
+                } else if (char == "-") {
+                    return "_"
+                } else if (char == ".") {
+                    return ">"
+                } else {
+                    return char
                 }
-            } while (idx != 0)
+            }
 
-            print pattern
-        }'
+            BEGIN {
+                do {
+                    idx = match(pattern, /[xX][0-9]/)
+                    token = substr(pattern, RSTART, RLENGTH)
+                    letter = getletter(token)
+                    if (idx != 0) {
+                        gsub(token, letter, pattern)
+                    }
+                } while (idx != 0)
+
+                print pattern
+            }'
+    )
+
+    sed -e 's|"|\\"|g' \
+        -e 's|^|"|' \
+        -e 's|$|"|' <<<"$password"
 }
 
 # collect password patterns from user
 get_password_patterns () {
+    if $su; then
+        echo -n "Enter Root Password Pattern: "
+        stty -echo
+        read root_password_pattern
+        stty echo
+        echo
+    fi
+
+    if $password_auth; then
+        echo -n "Enter Login Password Pattern: "
+        stty -echo
+        read login_password_pattern
+        stty echo
+        echo
+    fi
+
+    if $sudo; then
+        echo -n "Enter SUDO Password Pattern: "
+        stty -echo
+        read sudo_password_pattern
+        stty echo
+        echo
+    fi
+
     # extract password prompts from commands
     while read password_prompt; do
         password_prompts+=( "$password_prompt" )
@@ -402,12 +485,6 @@ generate_script () {
     local count
 
     count=0
-
-    # remove su code from expect script
-    if ! $su_do; then
-        sed '/SUDO: LO/,/SUDO: LO/d' "$script" > "${script}.tmp"
-        mv "${script}.tmp" "$script"
-    fi
 
     # initial command conversion
     sed '/^#COMMANDS#/ r /dev/stdin' $script > "${script}.tmp" < \
@@ -447,10 +524,9 @@ INTERACT
     # remove interact token
     sed '/^#interact/d' "${script}.tmp" > "$script"
 
-    # shift expect args if root password is provided
-    $su_do && count=1
 
     # replace #password# token with expect code
+    count=4
     while grep -q '^#password' "$script"; do
         read line password_count <<<$(awk -F: '/^#password/ {if ($2) {print NR,$2} else {print NR,1}; exit}' "$script")
         ((count+=1))
@@ -485,11 +561,11 @@ ssh_agent_init () {
 
 # destroy ssh agent
 ssh_agent_destroy () {
-    echo -e "\nDESTROYING SSH AGENT" >&2
-
-    kill $SSH_AGENT_PID
-    export SSH_AGENT_PID=
-    export SSH_AUTH_SOCK=
+    if kill $SSH_AGENT_PID 2>/dev/null; then
+        echo -e "\nDESTROYING SSH AGENT" >&2
+        export SSH_AGENT_PID=
+        export SSH_AUTH_SOCK=
+    fi
 }
 
 # parse tokens from commands
@@ -583,7 +659,7 @@ run_hosts () {
                             done
                         fi
 
-                       expect -f "$script" "$host" "${passwords[@]-}" > "${tmp_dir}/${count}-${host}.running"
+                       expect -f "$script" "$username" "$host" "$(get_password $host ${root_password_pattern-})" "$(get_password $host ${sudo_password_pattern-})" "$(get_password $host "${login_password_pattern-}")" "${passwords[@]-}" > "${tmp_dir}/${count}-${host}.running"
                        mv "${tmp_dir}/${count}-${host}.running" "${tmp_dir}/${count}-${host}.log"
                     else
                         echo -e "\n                   #       UNAVAILABLE: $host      #" > "${tmp_dir}/${count}-${host}.log"
@@ -602,11 +678,11 @@ run_hosts () {
                 # convert patterns to host based passwords
                 if [[ ${#password_patterns[*]} -gt 0 ]]; then
                     for pattern in "${password_patterns[@]}"; do
-                        passwords+=( $(get_password $host $pattern) )
+                        passwords+=( $(get_password $host "${pattern-}") )
                     done
                 fi
 
-               expect -f "$script" "$host" "${passwords[@]-}"
+               echo expect -f "$script" "$username" "$host" $(get_password $host "${root_password_pattern-}") $(get_password $host "${sudo_password_pattern-}") $(get_password $host "${login_password_pattern-}") ${passwords[@]-}
             else
                 echo -e "\n                   #       UNAVAILABLE: $host      #"
                 continue
@@ -638,12 +714,27 @@ for arg in $@; do
         -o)
             output='-o'
             ;;
+        -p)
+            ssh_agent=true
+            password_auth=true
+            ;;
+        -P)
+            ssh_agent=false
+            password_auth=true
+            ;;
         -r)
-            su_do=true
-            password_prompts=( "Enter Root Password Pattern" )
+            $sudo && error 'cannot combine -R with -r'
+            su=true
+            ;;
+        -R)
+            $su && error 'cannot combine -r with -R'
+            sudo=true
             ;;
         -f)
             commands='-f'
+            ;;
+        -u)
+            username='-u'
             ;;
          *)
             if [[ "$concurrency" == '-c' ]] && [[ "$arg" =~ ^[0-9]+$ ]]; then
@@ -653,6 +744,8 @@ for arg in $@; do
                 commands=$(cat "$arg")
             elif [[ "$output" == '-o' ]]; then
                 output="$arg"
+            elif [[ "$username" == '-u' ]]; then
+                username="$arg"
             else
                 hosts+=( "$arg" )
             fi
@@ -665,6 +758,9 @@ done
 
 # set default concurrecy if number was not provided
 [[ "$concurrency" == '-c' ]] && concurrency=10
+
+# set default username if none was provided
+[[ "$username" == '-u' ]] && username=$USER
 
 # capture commands from stdin
 if [[ -z "$commands" ]]; then
@@ -683,29 +779,38 @@ fi
 # parse tokens within commands
 parse_tokens
 
+# check for active ssh-agent
+if $ssh_agent && ! ssh-add -l >/dev/null 2>&1; then
+    load_ssh_agent=true
+fi
+
 # prompt user to continue
 {
-    if [[ ${#hosts[*]} -gt 1 ]]; then
-        if [[ $concurrency -gt 1 ]]; then
-            echo -e "\nCOMMANDS: (run concurrently $($su_do && echo 'as root ')on up to $concurrency systems at a time)"
-        else
-            echo -e "\nCOMMANDS: (run $($su_do && echo 'as root ')on each system one at a time)"
-        fi
+    if $su || $sudo; then
+        echo -e "\nCOMMANDS (run as root):\n"
     else
-        echo -e "\nCOMMANDS:$($su_do && echo ' (run as root)')"
+        echo -e "\nCOMMANDS (run as $username):\n"
     fi
 
     while read cmd;  do
         echo -e "\t$cmd"
     done <<<"$commands"
 
-    echo -e "\nHOSTS:"
-    for host in "${hosts[@]}"; do
-        echo -e "\t$host"
-    done
+    if [[ ${#hosts[*]} -gt 1 ]]; then
+        if [[ $concurrency -gt 1 ]]; then
+            echo -e "\nHOSTS (up to $concurrency systems executed concurrently):"
+        else
+            echo -e "\nHOSTS (executed incrementally):"
+        fi
 
-    # check for active ssh-agent
-    if ! ssh-add -l >/dev/null 2>&1; then
+        for host in "${hosts[@]}"; do
+            echo -e "\t$host"
+        done
+    else
+        echo -e "\nHOST:\t${hosts[*]}"
+    fi
+
+    if $load_ssh_agent; then
         echo -e '\nNOTE:'
         echo -e '\tYou currently do not have any keys loaded into an ssh agent.'
         echo
@@ -721,8 +826,6 @@ parse_tokens
         echo -e '\t      key is sufficient to skip loading that key.'
         echo
         echo -e '\tThis agent will be destroyed when ssh-exec exits.'
-
-        load_ssh_agent=true
     fi
 
     warnings=( )

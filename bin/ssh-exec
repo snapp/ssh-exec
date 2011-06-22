@@ -353,9 +353,9 @@ error () {
 get_password () {
     awk -v host="$1" -v pattern="${2-}" '
         function getletter(case_pos) {
-            case=substr(case_pos, 1, 1)
+            char_case=substr(case_pos, 1, 1)
             pos=substr(case_pos, 2)
-            char=(case == "X") ? toupper(substr(host, pos, 1)) : tolower(substr(host, pos, 1))
+            char=(char_case == "X") ? toupper(substr(host, pos, 1)) : tolower(substr(host, pos, 1))
 
             if (char == 1) {
                 return "!"

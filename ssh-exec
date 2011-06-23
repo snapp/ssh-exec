@@ -167,15 +167,24 @@ EXPECT
 #
 # $1 - boolean determining if full formatted output should be printed
 print_usage () {
-    local verbose b c i u
+    local verbose b c u
 
     verbose=false
-    [[ $# -gt 0 ]] && verbose=true
 
-    b='\033[1m'
-    c='\033[0m'
-    i='\033[3m'
-    u='\033[4m'
+    # initialize formatting variables
+    b=
+    c=
+    u=
+
+    if [[ $# -gt 0 ]]; then
+        verbose=true
+
+        if [[ "$1" == 'pretty' ]]; then
+            b='\033[1m'
+            c='\033[0m'
+            u='\033[4m'
+        fi
+    fi
 
     if $verbose; then
         echo "$prog $version" | tr '[:lower:]' '[:upper:]'
@@ -279,7 +288,7 @@ print_usage () {
         echo -e "\t${b}Executing simple one liners${c}"
         echo -e "\tFor very simple scripts you can just use a here-string (i.e. <<<)"
         echo
-        echo -e "\t\t${i}ssh-exec example.com <<<'ls -la ~/.ssh'${c}"
+        echo -e "\t\tssh-exec example.com <<<'ls -la ~/.ssh'"
         echo
         echo -e "\t${b}Executing multi-line scripts${c}"
         echo -e "\tFor more complex scripts you can simply hit enter and type your script"
@@ -291,45 +300,45 @@ print_usage () {
         echo -e "\tNOTE: The use of quotes around the EOF delimeter is to ensure the shell"
         echo -e "\t      does not expand any variables within your script."
         echo
-        echo -e "\t\t${i}ssh-exec example.com <<'EOF'"
+        echo -e "\t\tssh-exec example.com <<'EOF'"
         echo -e "\t\tuptime"
         echo -e "\t\tcat \$HOME/.ssh/authorized_keys"
         echo -e "\t\ttail -n15 \$HOME/.bash_history"
-        echo -e "\t\tEOF${c}"
+        echo -e "\t\tEOF"
         echo
         echo -e "\t${b}Execute a command concurrently against multiple systems as root${c}"
         echo
-        echo -e "\t\t${i}ssh-exec -r -c example-{1..50}.com <<<'cat /etc/shadow'"
+        echo -e "\t\tssh-exec -r -c example-{1..50}.com <<<'cat /etc/shadow'"
         echo
         echo -e "\t${b}Login to a list of servers for manual maintenance${c}"
         echo
-        echo -e "\t\t${i}ssh-exec -r example-{1..50}.com <<<'#interact#'"
+        echo -e "\t\tssh-exec -r example-{1..50}.com <<<'#interact#'"
         echo
         echo -e "\t${b}Perform a standard tripwire update; overriding the default concurrency of 10${c}"
         echo
-        echo -e "\t\t${i}ssh-exec -r -c 25 example-{1..50}.com <<<'#tripwire#'"
+        echo -e "\t\tssh-exec -r -c 25 example-{1..50}.com <<<'#tripwire#'"
         echo
         echo -e "\t${b}Change root password followed by tripwire update${c}"
         echo
-        echo -e "\t\t${i}ssh-exec -r -c example-{1..50}.com <<'EOF'"
+        echo -e "\t\tssh-exec -r -c example-{1..50}.com <<'EOF'"
         echo -e "\t\t#passwd#"
         echo -e "\t\t#tripwire#"
-        echo -e "\t\tEOF${c}"
+        echo -e "\t\tEOF"
         echo
         echo -e "\t${b}Change testuser's password followed by tripwire update${c}"
         echo
-        echo -e "\t\t${i}ssh-exec -r -c example-{1..50}.com <<'EOF'"
+        echo -e "\t\tssh-exec -r -c example-{1..50}.com <<'EOF'"
         echo -e "\t\t#passwd testuser#"
         echo -e "\t\t#tripwire#"
-        echo -e "\t\tEOF${c}"
+        echo -e "\t\tEOF"
         echo
         echo -e "\t${b}Override timeout period for long running script${c}"
         echo
-        echo -e "\t\t${i}ssh-exec example.com <<'EOF'"
+        echo -e "\t\tssh-exec example.com <<'EOF'"
         echo -e "\t\tuptime"
         echo -e "\t\t#timeout 25#"
         echo -e "\t\tsleep 20; echo 'sleep complete'"
-        echo -e "\t\tEOF${c}"
+        echo -e "\t\tEOF"
         echo
     fi
 }
@@ -685,6 +694,10 @@ for arg in $@; do
             ;;
         -h)
             print_usage 'verbose' >&2
+            exit 0
+            ;;
+        --help)
+            print_usage 'pretty' | less -r
             exit 0
             ;;
         -o)

@@ -24,7 +24,7 @@ set -u
 # dependency check
 [[ "$(which expect)" ]] || { echo 'ERROR: expect command is not available'; exit 1; }
 
-prog=$(basename $0)
+prog='ssh-exec'
 version=1.0
 
 commands=
@@ -190,155 +190,196 @@ print_usage () {
         echo "$prog $version" | tr '[:lower:]' '[:upper:]'
         echo
         echo -e "${b}NAME${c}"
-        echo -e "\t${b}$prog${c} — executes commands on remote hosts; optionally as root"
+        echo -e "    ${b}$prog${c} — executes commands on a list of remote hosts; optionally as root"
         echo
     fi
 
     echo -e "${b}SYNOPSIS${c}"
-    echo -e "\t${b}$prog${c} [${b}-hrRpP${c}] [${b}-c${c} ${u}count${c}] [${b}-f${c} ${u}commands file${c}] [${b}-o${c} ${u}output file${c}] [${b}-u${c} ${u}username${c}] ${u}host1..host2..etc${c}"
+    echo -e "    ${b}$prog${c} [${b}-hrRpP${c}] [${b}--help${c}] [${b}-c${c} ${u}count${c}] [${b}-f${c} ${u}commands-file${c}] [${b}-o${c} ${u}output-file${c}] [${b}-u${c} ${u}username${c}] ${u}host1 host2 host3...${c}"
     echo
 
     if $verbose; then
         echo -e "${b}DESCRIPTION${c}"
-        echo -e "\tThe goal of this script is to provide a secure method for"
-        echo -e "\texecuting scripts on remote hosts securely while also allowing"
-        echo -e "\tfor scripts to be executed as root."
+        echo -e "    $prog provides a secure method for automating the execution of scripts on"
+        echo -e "    multiple remote hosts.  The automation can be set to either increment through"
+        echo -e "    the list of hosts or run against multiple hosts concurrently."
         echo
-        echo -e "\t${b}Password Handling${c}"
-        echo -e "\tPasswords processed by ssh-exec are expected to follow a pattern where"
-        echo -e "\tthe letter 'X' (upper or lower case) when immediately followed by a"
-        echo -e "\tnumber shall be substituted with the appropriate letter from the"
-        echo -e "\thostname currently being executed against."
+        echo -e "    Other methods exist for running scripts against remote hosts but they tend to"
+        echo -e "    require the installation of a daemon on each remote host (e.g. Func)."
         echo
-        echo -e "\tExample:\t pattern: ${b}passX3wordx1X4${c}"
-        echo -e "\t\t\thostname: ${b}example.com${c}"
-        echo -e "\t\t\t  result: ${b}passAwordeM${c}"
+        echo -e "    By comparison, $prog is a simple wrapper for standard SSH transactions.  This"
+        echo -e "    means there are NO server side modifications required and all automated scripts"
+        echo -e "    are tracked the same as if you had logged into each system and performed the"
+        echo -e "    commands manually.  This is in contrast to Func's approach where all commands"
+        echo -e "    are executed by a privileged 'func' user and proper accountability is lost."
         echo
-        echo -e "\t${b}Troubleshooting${c}"
-        echo -e "\tIt is expected that the results of your script end"
-        echo -e "\twith a prompt as recognized by the regular expression:"
+        echo -e "    ${b}Password Handling${c}"
+        echo -e "    In order for $prog to accomplish password handling across numerous hosts"
+        echo -e "    it expects a simple convention to be followed.  This convention allows for you"
+        echo -e "    to keep different passwords on all of your systems while keeping it easy to"
+        echo -e "    manage."
         echo
-        echo -e "\t\t\t${b}/(>|%|#|\\$) \$/${c}"
+        echo -e "    ${b}Password Patterns${c}"
+        echo -e "    If the password you have provided contains the letter 'X' (upper or lower"
+        echo -e "    case) immediately followed by a digit then the 'X + digit' combination shall be"
+        echo -e "    substituted with the letter from the hostname identified by the digit with the"
+        echo -e "    case dictated by the case of the letter 'X'."
         echo
-        echo -e "\tYour script will hang should the prompt not be detected."
+        echo -e "    NOTE:"
+        echo -e "      * The letter 'X' is perfectly valid as part of a password; it is ONLY"
+        echo -e "        when the letter 'X' is IMMEDIATELY followed by a digit that the"
+        echo -e "        substitution takes place."
+        echo -e "      * If your password pattern does not contain any 'X + digit' combinations"
+        echo -e "        then the password will be unaltered as it is submitted to each host."
+        echo -e "      * Only the first digit immediately following the letter 'X' is used during"
+        echo -e "        character substitution."
+        echo -e "      * Character substitution occurs as if you were typing the password in"
+        echo -e "        directly; that is, if the character retrieved from the hostname"
+        echo -e "        is either a digit, period, or hyphen AND the case indicated by the letter"
+        echo -e "        'X' is uppercase, then the result would be the same as if you pressed the"
+        echo -e "        'shift' key while typing the digit, period, or hyphen."
+        echo
+        echo -e "    Examples (where hostname is 'example.com'):${c}"
+        echo -e "            pattern: ${b}X1x2X3x4X5${c}    result: ${b}ExAmP${c}"
+        echo -e "            pattern: ${b}fooX3barX1x4${c}  result: ${b}fooAbarEm${c}"
+        echo -e "            pattern: ${b}foobarX1x8${c}    result: ${b}foobarE>${c}"
+        echo -e "            pattern: ${b}fooXbarX1x12${c}  result: ${b}fooXbarEe2${c}"
+        echo
+        echo -e "    ${b}Timeouts${c}"
+        echo -e "    $prog expects that each command within your script results in a prompt."
+        echo
+        echo -e "    A prompt is recognized by the regular expression:"
+        echo
+        echo -e "            ${b}/(>|%|#|\\$) \$/${c}"
+        echo
+        echo -e "    Should a command not return to a prompt within the timeout period (default is 10"
+        echo -e "    seconds) then ssh-exec will abort execution of your script against that host."
+        echo
+        echo -e "    ${b}Tokens${c}"
+        echo -e "    ssh-exec tokens are functions that you can add to your script either to control"
+        echo -e "    the execution of your scripe"
+        echo
+        echo -e "    Tokens are identified by a hash (#) at the start of"
+        echo -e "    a line followed by one of the reserved words listed below."
         echo
     fi
 
     echo -e "${b}OPTIONS${c}"
-    echo -e "\t${b}-c${c} ${u}count${c}"
-    echo -e "\t\tthe number of jobs to run concurrently; defaults to 10 if no value is provided"
-    echo -e "\t\t\tNOTE: While the script will execute in separate threads up to the concurrency"
-    echo -e "\t\t\t      level you provide, the system results will always be returned in"
-    echo -e "\t\t\t      order that you specified your hosts."
+    echo -e "    ${b}-c${c} ${u}count${c}"
+    echo -e "        the number of jobs to run concurrently; defaults to 10 if no value is provided"
+    echo -e "        NOTE: While the script will execute in separate threads up to the concurrency"
+    echo -e "              level you provide, the results will always be returned in the order that"
+    echo -e "              you originally specified."
     echo
-    echo -e "\t${b}-f${c} ${u}file${c}"
-    echo -e "\t\tthe file containing commands to be executed"
+    echo -e "    ${b}-f${c} ${u}file${c}"
+    echo -e "        the file containing commands to be executed"
     echo
-    echo -e "\t${b}-h${c}\tdisplay this help and exit"
+    echo -e "    ${b}-h${c}  display this help and exit"
     echo
-    echo -e "\t${b}-o${c} ${u}file${c}"
-    echo -e "\t\tthe file where stdout should be logged"
+    echo -e "    ${b}-o${c} ${u}file${c}"
+    echo -e "        the file where STDOUT should be logged"
     echo
-    echo -e "\t${b}-r${c}\trun commands as root via 'su -' authentication"
+    echo -e "    ${b}-r${c}  run commands as root via 'su -' authentication"
     echo
-    echo -e "\t${b}-R${c}\trun commands as root via 'sudo su -' authentication"
+    echo -e "    ${b}-R${c}  run commands as root via 'sudo su -' authentication"
+    echo -e "        NOTE: You will be prompted for the password necessary for sudo to execute."
+    echo -e "              This password will only be used if the server prompts for it.  This means"
+    echo -e "              that if you have NOPASSWD:ALL set in the sudoers file you could simply"
+    echo -e "              hit 'Enter' when prompted and no password will be required."
     echo
-    echo -e "\t${b}-u${c} ${u}username${c}"
-    echo -e "\t\tthe username used during initial ssh login"
+    echo -e "    ${b}-u${c} ${u}username${c}"
+    echo -e "        the username used during initial ssh login; default is your current username"
     echo
-    echo -e "\t${b}-p${c}\tprompt for user password; used if key login fails"
+    echo -e "    ${b}-p${c}  prompt for user password; allows for a fallback if key login fails"
     echo
-    echo -e "\t${b}-P${c}\tprompt for user password; disables spawn ssh-agent"
+    echo -e "    ${b}-P${c}  prompt for user password; disables spawning of ssh-agent"
     echo
 
     if $verbose; then
-        echo -e "${b}TOKENS${c}"
-        echo -e "\tssh-exec tokens are identified by a hash (#) at the start of"
-        echo -e "\ta line followed by one of the reserved words listed below."
+        echo -e "${b}BUILT-IN TOKENS${c}"
+        echo -e "    ${b}#passwd ${u}<username>${c}${b}#${c}"
+        echo -e "        Inserts the commands for changing the provided username's password."
+        echo -e "        If no username is provided, user will default to root."
         echo
-        echo -e "\t${b}#passwd ${u}<username>${c}${b}#${c}"
-        echo -e "\t\tInserts the commands for changing the provided username's password."
-        echo -e "\t\tIf no username is provided, user will default to root."
+        echo -e "    ${b}#tripwire#${c}"
+        echo -e "        Inserts the commands necessary for performing a tripwire update."
         echo
-        echo -e "\t${b}#tripwire#${c}"
-        echo -e "\t\tInserts the commands necessary for performing a tripwire update."
+        echo -e "    ${b}#expect ${u}pattern${c}${b}#${c}"
+        echo -e "        Explicitly look for a phrase using expect format prior to executing"
+        echo -e "        the next command."
         echo
-        echo -e "\t${b}#expect ${u}pattern${c}${b}#${c}"
-        echo -e "\t\tExplicitly look for a phrase using expect format prior to executing"
-        echo -e "\t\tthe next command."
+        echo -e "    ${b}#interact#${c}"
+        echo -e "        This will pause automatic execution and allow you to execute commands"
+        echo -e "        directly into the console.  When you are finished and would like to"
+        echo -e "        give control back to automatic execution, simply type ${b}#x${c}"
         echo
-        echo -e "\t${b}#interact#${c}"
-        echo -e "\t\tThis will pause automatic execution and allow you to execute commands"
-        echo -e "\t\tdirectly into the console.  When you are finished and would like to"
-        echo -e "\t\tgive control back to automatic execution, simply type ${b}#x${c}"
+        echo -e "    ${b}#password${u}:<repeat>:<prompt contents>${c}${b}#${c}"
+        echo -e "        This token allows you to securely collect password patterns prior to"
+        echo -e "        runtime and then have them injected the number of times specified"
+        echo -e "        via the second argument."
+        echo -e "        A custom prompt can also be provided as the third argument."
         echo
-        echo -e "\t${b}#password${u}:<repeat>:<prompt contents>${c}${b}#${c}"
-        echo -e "\t\tThis token allows you to securely collect password patterns prior to"
-        echo -e "\t\truntime and then have them injected the number of times specified"
-        echo -e "\t\tvia the second argument."
-        echo -e "\t\tA custom prompt can also be provided as the third argument."
-        echo
-        echo -e "\t${b}#timeout ${u}duration${c}${b}#${c}"
-        echo -e "\t\tOverride the default 10 second timeout that expect uses waiting"
-        echo -e "\t\tfor a prompt."
-        echo -e "\t\tTimeout is in seconds; while a value of -1 represents unlimited"
-        echo -e "\t\tIf no value is provided timeout will be reset to 10 seconds"
+        echo -e "    ${b}#timeout ${u}duration${c}${b}#${c}"
+        echo -e "        Override the default 10 second timeout that expect uses waiting"
+        echo -e "        for a prompt."
+        echo -e "        Timeout is in seconds; while a value of -1 represents unlimited"
+        echo -e "        If no value is provided timeout will be reset to 10 seconds"
         echo
         echo -e "${b}EXAMPLES${c} - (examples are based on execution within a BASH shell)"
-        echo -e "\t${b}Executing simple one liners${c}"
-        echo -e "\tFor very simple scripts you can just use a here-string (i.e. <<<)"
+        echo -e "    ${b}Executing simple one liners${c}"
+        echo -e "    For very simple scripts you can just use a here-string (i.e. <<<)"
         echo
-        echo -e "\t\tssh-exec example.com <<<'ls -la ~/.ssh'"
+        echo -e "        ssh-exec example.com <<<'ls -la ~/.ssh'"
         echo
-        echo -e "\t${b}Executing multi-line scripts${c}"
-        echo -e "\tFor more complex scripts you can simply hit enter and type your script"
-        echo -e "\tcontents directly into stdin followed by ctrl-d to finish."
+        echo -e "    ${b}Executing multi-line scripts${c}"
+        echo -e "    For more complex scripts you can simply hit enter and type your script"
+        echo -e "    contents directly into STDIN followed by ctrl-d to finish."
         echo
-        echo -e "\tIf you would like to store your script within your shell's history you"
-        echo -e "\twould probably rather use a here-doc (i.e. <<'EOF')."
+        echo -e "    If you would like to store your script within your shell's history you"
+        echo -e "    would probably rather use a here-doc (i.e. <<'EOF')."
         echo
-        echo -e "\tNOTE: The use of quotes around the EOF delimeter is to ensure the shell"
-        echo -e "\t      does not expand any variables within your script."
+        echo -e "    NOTE: The use of quotes around the EOF delimeter is to ensure the shell"
+        echo -e "          does not expand any variables within your script."
         echo
-        echo -e "\t\tssh-exec example.com <<'EOF'"
-        echo -e "\t\tuptime"
-        echo -e "\t\tcat \$HOME/.ssh/authorized_keys"
-        echo -e "\t\ttail -n15 \$HOME/.bash_history"
-        echo -e "\t\tEOF"
+        echo -e "        ssh-exec example.com <<'EOF'"
+        echo -e "        uptime"
+        echo -e "        cat \$HOME/.ssh/authorized_keys"
+        echo -e "        tail -n15 \$HOME/.bash_history"
+        echo -e "        EOF"
         echo
-        echo -e "\t${b}Execute a command concurrently against multiple systems as root${c}"
+        echo -e "    ${b}Execute a command concurrently against multiple systems as root${c}"
         echo
-        echo -e "\t\tssh-exec -r -c example-{1..50}.com <<<'cat /etc/shadow'"
+        echo -e "        ssh-exec -r -c example-{1..50}.com <<<'cat /etc/shadow'"
         echo
-        echo -e "\t${b}Login to a list of servers for manual maintenance${c}"
+        echo -e "    ${b}Login to a list of servers for manual maintenance${c}"
         echo
-        echo -e "\t\tssh-exec -r example-{1..50}.com <<<'#interact#'"
+        echo -e "        ssh-exec -r example-{1..50}.com <<<'#interact#'"
         echo
-        echo -e "\t${b}Perform a standard tripwire update; overriding the default concurrency of 10${c}"
+        echo -e "    ${b}Perform a standard tripwire update; overriding the default concurrency of 10${c}"
         echo
-        echo -e "\t\tssh-exec -r -c 25 example-{1..50}.com <<<'#tripwire#'"
+        echo -e "        ssh-exec -r -c 25 example-{1..50}.com <<<'#tripwire#'"
         echo
-        echo -e "\t${b}Change root password followed by tripwire update${c}"
+        echo -e "    ${b}Change root password followed by tripwire update${c}"
         echo
-        echo -e "\t\tssh-exec -r -c example-{1..50}.com <<'EOF'"
-        echo -e "\t\t#passwd#"
-        echo -e "\t\t#tripwire#"
-        echo -e "\t\tEOF"
+        echo -e "        ssh-exec -r -c example-{1..50}.com <<'EOF'"
+        echo -e "        #passwd#"
+        echo -e "        #tripwire#"
+        echo -e "        EOF"
         echo
-        echo -e "\t${b}Change testuser's password followed by tripwire update${c}"
+        echo -e "    ${b}Change testuser's password followed by tripwire update${c}"
         echo
-        echo -e "\t\tssh-exec -r -c example-{1..50}.com <<'EOF'"
-        echo -e "\t\t#passwd testuser#"
-        echo -e "\t\t#tripwire#"
-        echo -e "\t\tEOF"
+        echo -e "        ssh-exec -r -c example-{1..50}.com <<'EOF'"
+        echo -e "        #passwd testuser#"
+        echo -e "        #tripwire#"
+        echo -e "        EOF"
         echo
-        echo -e "\t${b}Override timeout period for long running script${c}"
+        echo -e "    ${b}Override timeout period for long running script${c}"
         echo
-        echo -e "\t\tssh-exec example.com <<'EOF'"
-        echo -e "\t\tuptime"
-        echo -e "\t\t#timeout 25#"
-        echo -e "\t\tsleep 20; echo 'sleep complete'"
-        echo -e "\t\tEOF"
+        echo -e "        ssh-exec example.com <<'EOF'"
+        echo -e "        uptime"
+        echo -e "        #timeout 25#"
+        echo -e "        sleep 20; echo 'sleep complete'"
+        echo -e "        EOF"
         echo
     fi
 }

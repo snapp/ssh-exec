@@ -596,7 +596,7 @@ ssh_agent_destroy () {
 
 # parse tokens from commands
 parse_tokens () {
-    local commands_file
+    local line username commands_file
 
     commands_file="$tmp_dir/commands"
 

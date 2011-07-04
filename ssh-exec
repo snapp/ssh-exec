@@ -600,36 +600,29 @@ ssh_agent_destroy () {
 
 # parse tokens from commands
 parse_tokens () {
-    local line username commands_file
+    local commands_file line tokens username
 
+    tokens=( )
     commands_file="$tmp_dir/commands"
-
-    # expand #tripwire# token
-    commands=$(
-        sed '/^#tripwire#/ r /dev/stdin' <(echo "$commands") > "$commands_file" <<'TRIPWIRE'
-#timeout -1#
-tripwire -m c; tripwire -m u --twrfile "$(find /var/lib/tripwire/report/ -cmin -1 -type f)" -a
-#expect "passphrase:"#
-#password::Enter password for tripwire#
-#timeout#
-TRIPWIRE
-        sed '/^#tripwire#/d' "$commands_file"
-    )
 
     echo "$commands" > "$commands_file"
 
-    # expand #passwd# token
-    while grep -q '^#passwd' "$commands_file"; do
-        read line username <<<$(awk '/^#passwd/ {if ($2) {print NR,substr($0, index($0,$2), length($2)-1)} else {print NR,"root"}; exit}' "$commands_file")
+    # TODO 20110703 - add support for passing in multiple arguments
+    # TODO 20110703 - modify to support recipes containing other recipe tokens
 
-        # insert shell commands for password change
-        sed "$line r /dev/stdin" "$commands_file" > "${commands_file}.tmp" <<PASSWD
-passwd $username
-#password:2:Enter new password for $username#
-PASSWD
+    # expand ~/.ssh-exec tokens
+    for token_file in $HOME/.ssh-exec/*; do
+        token="${token_file##*/}"
 
-        # remove passwd token
-        sed "${line}d" "${commands_file}.tmp" > "$commands_file"
+        while grep -q "^#$token" "$commands_file"; do
+            read line arg <<<$(awk "/^#$token/"' {if ($2) {print NR,substr($0, index($0,$2), length($2)-1)} else {print NR,"root"}; exit}' "$commands_file")
+
+            # insert shell commands for token
+            sed "$line r /dev/stdin" "$commands_file" > "${commands_file}.tmp" < <(sed "s/\$arg/$arg/g" "$token_file")
+
+            # remove token
+            sed "${line}d" "${commands_file}.tmp" > "$commands_file"
+        done
     done
 
     commands=$(cat "$commands_file")

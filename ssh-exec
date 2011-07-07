@@ -353,7 +353,7 @@ print_usage () {
         echo -e "        ssh-exec example.com <<'EOF'"
         echo -e "        uptime"
         echo -e "        cat \$HOME/.ssh/authorized_keys"
-        echo -e "        tail -n15 \$HOME/.bash_history"
+        echo -e "        tail -15 \$HOME/.bash_history"
         echo -e "        EOF"
         echo
         echo -e "    ${b}Execute a command concurrently against multiple systems as root${c}"
@@ -623,7 +623,7 @@ parse_tokens () {
     done
 
     # expand user defined tokens
-    while read token args <<<$(egrep -n "$tokens" "$commands_file" | head -n1 | sed -e 's/#\(.*\)/\1/' -e 's/#$//'); do
+    while read token args <<<$(egrep -n "$tokens" "$commands_file" | head -1 | sed -e 's/#\(.*\)/\1/' -e 's/#$//'); do
         # if no tokens are found we're done
         [[ -z "$token" ]] && break
 

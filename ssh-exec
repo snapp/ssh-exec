@@ -828,6 +828,9 @@ done
 # set default concurrecy if number was not provided
 [[ "$concurrency" == '-c' ]] && concurrency=10
 
+# overide concurrency if only one host is provided
+[[ ${#hosts[*]} -eq 1 ]] && [[ "$concurrency" -gt 1 ]] && concurrency=1
+
 # set default username if none was provided
 [[ "$username" == '-u' ]] && username=$USER
 
@@ -898,11 +901,6 @@ fi
     fi
 
     warnings=( )
-    # hand-holding: check for commands that may exceed default timeout
-    if ! grep -q '^#timeout' <<<"$commands"; then
-        grep -q 'tripwire' <<<"$commands" && warnings+=("tripwire will likely cause the script to exceed the 10 second timeout\n\t\t- you will likely need to override the timeout period by using #timeout -1#\n\t\t- you may want to consider using the builtin #tripwire# token instead")
-    fi
-
     # hand-holding: check for password change without password being provided
     if ! grep -q '^#password:2' <<<"$commands"; then
         grep -q 'passwd' <<<"$commands" && warnings+=("passwd will require the #password:2# token\n\t\t- you may want to consider using the builtin #passwd <username># token instead")

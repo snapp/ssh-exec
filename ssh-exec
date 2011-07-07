@@ -331,6 +331,9 @@ print_usage () {
         echo -e "        Timeout is in seconds; while a value of -1 represents unlimited"
         echo -e "        If no value is provided timeout will be reset to 10 seconds"
         echo
+        echo -e "    ${b}#user#${c}"
+        echo -e "        inserts the username that ssh-exec is logging in as"
+        echo
         echo -e "${b}EXAMPLES${c} - (examples are based on execution within a BASH shell)"
         echo -e "    ${b}Executing simple one liners${c}"
         echo -e "    For very simple scripts you can just use a here-string (i.e. <<<)"
@@ -657,7 +660,8 @@ PASSWD
         sed "${line}d" "${commands_file}.tmp" > "$commands_file"
      done
 
-    commands=$(cat "$commands_file")
+    # expand built-in #user# token
+    commands=$(sed "s/#user#/$username/" "$commands_file")
 
     rm -f $commands_file{,.tmp}
 }

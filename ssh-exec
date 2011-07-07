@@ -43,6 +43,8 @@ sudo_password_pattern='#null#'
 login_password_pattern='#null#'
 username="$USER"
 
+recipes_dir="$HOME/.ssh-exec"
+
 tmp_dir="$(mktemp -dt $prog.XXXXX)" || error 'cannot create temp directory!'
 script="${tmp_dir}/commands.exp"
 
@@ -607,23 +609,53 @@ parse_tokens () {
 
     echo "$commands" > "$commands_file"
 
-    # TODO 20110703 - add support for passing in multiple arguments
-    # TODO 20110703 - modify to support recipes containing other recipe tokens
-
-    # expand ~/.ssh-exec tokens
-    for token_file in $HOME/.ssh-exec/*; do
-        token="${token_file##*/}"
-
-        while grep -q "^#$token" "$commands_file"; do
-            read line arg <<<$(awk "/^#$token/"' {if ($2) {print NR,substr($0, index($0,$2), length($2)-1)} else {print NR,"root"}; exit}' "$commands_file")
-
-            # insert shell commands for token
-            sed "$line r /dev/stdin" "$commands_file" > "${commands_file}.tmp" < <(sed "s/\$arg/$arg/g" "$token_file")
-
-            # remove token
-            sed "${line}d" "${commands_file}.tmp" > "$commands_file"
-        done
+    # load user defined tokens
+    tokens=
+    for token_file in $recipes_dir/*; do
+        if [[ "$tokens" ]]; then
+            tokens="${tokens}|^#${token_file##*/}"
+        else
+            tokens="^#${token_file##*/}"
+        fi
     done
+
+    # expand user defined tokens
+    while read token args <<<$(egrep -n "$tokens" "$commands_file" | head -n1 | sed -e 's/#\(.*\)/\1/' -e 's/#$//'); do
+        # if no tokens are found we're done
+        [[ -z "$token" ]] && break
+
+        read line token <<<$(sed 's/:/ /' <<<"$token")
+
+        # load recipe from associated token file
+        recipe=$(cat "${recipes_dir}/${token#*#}")
+
+        # replace args within recipe
+        count=1
+        while read arg; do
+            recipe=$(sed "s/\$arg${count}/$arg/g" <<<"$recipe")
+            ((count+=1))
+        done < <(eval "for arg in $args; do echo \$arg; done")
+
+        # replace token with associated recipe
+        sed "$line r /dev/stdin" "$commands_file" > "${commands_file}.tmp" <<<"$recipe"
+
+        # remove token
+        sed "${line}d" "${commands_file}.tmp" > "$commands_file"
+    done
+
+    # expand built-in #passwd# token
+    while grep -q '^#passwd' "$commands_file"; do
+        read line username <<<$(awk '/^#passwd/ {if ($2) {print NR,substr($0, index($0,$2), length($2)-1)} else {print NR,"root"}; exit}' "$commands_file")
+
+        # insert shell commands for password change
+        sed "$line r /dev/stdin" "$commands_file" > "${commands_file}.tmp" <<PASSWD
+passwd $username
+#password:2:Enter new password for $username#
+PASSWD
+
+        # remove passwd token
+        sed "${line}d" "${commands_file}.tmp" > "$commands_file"
+     done
 
     commands=$(cat "$commands_file")
 

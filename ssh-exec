@@ -713,7 +713,7 @@ run_hosts () {
 
                 {
                     # run script if host is available
-                    if ping -qn -c1 "$host" 2>&1 | grep -q '1.*received'; then
+                    if ping -qn -c1 "$host" 2>&1 | egrep -q '1 received|1 packets received'; then
                         # convert patterns to host based passwords
                         if [[ ${#password_patterns[*]} -gt 0 ]]; then
                             for pattern in "${password_patterns[@]}"; do
@@ -724,8 +724,7 @@ run_hosts () {
                        expect -f "$script" "$username" "$host" "$(get_password $host "${root_password_pattern-}")" "$(get_password $host "${sudo_password_pattern-}")" "$(get_password $host "${login_password_pattern-}")" "${passwords[@]-}" > "${tmp_dir}/${count}-${host}.running"
                        mv "${tmp_dir}/${count}-${host}.running" "${tmp_dir}/${count}-${host}.log"
                     else
-                        echo -e "\n                   #       UNAVAILABLE: $host      #" > "${tmp_dir}/${count}-${host}.log"
-                        continue
+                        echo -e "\n                   #       UNABLE TO PING: $host      #" > "${tmp_dir}/${count}-${host}.log"
                     fi
                 } &
 
@@ -736,7 +735,7 @@ run_hosts () {
             echo -e "\nSpawning job $count of $total for $host" |  tr '[:lower:]' '[:upper:]' >&2
 
             # run script if host is available
-            if ping -qn -c1 "$host" 2>&1 | grep -q '1.*received'; then
+            if ping -qn -c1 "$host" 2>&1 | egrep -q '1 received|1 packets received'; then
                 # convert patterns to host based passwords
                 if [[ ${#password_patterns[*]} -gt 0 ]]; then
                     for pattern in "${password_patterns[@]}"; do
@@ -746,8 +745,7 @@ run_hosts () {
 
                 expect -f "$script" "$username" "$host" "$(get_password $host "${root_password_pattern-}")" "$(get_password $host "${sudo_password_pattern-}")" "$(get_password $host "${login_password_pattern-}")" "${passwords[@]-}"
             else
-                echo -e "\n                   #       UNAVAILABLE: $host      #"
-                continue
+                echo -e "\n                   #       UNABLE TO PING: $host      #"
             fi
 
             ((count+=1))

@@ -630,7 +630,7 @@ parse_tokens () {
         read line token <<<$(sed 's/:/ /' <<<"$token")
 
         # load recipe from associated token file
-        recipe=$(cat "${recipes_dir}/${token#*#}")
+        recipe=$(cat "${recipes_dir}/$token")
 
         # replace args within recipe
         count=1
@@ -638,6 +638,9 @@ parse_tokens () {
             recipe=$(sed "s/\$arg${count}/$arg/g" <<<"$recipe")
             ((count+=1))
         done < <(eval "for arg in $args; do echo \$arg; done")
+
+        # sanity check for missing args
+        grep -q '$arg[[:digit:]]' <<<"$recipe" && { echo "ERROR: missing argument for token: $token"; exit 1; }
 
         # replace token with associated recipe
         sed "$line r /dev/stdin" "$commands_file" > "${commands_file}.tmp" <<<"$recipe"

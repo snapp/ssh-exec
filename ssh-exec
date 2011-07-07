@@ -839,11 +839,11 @@ if [[ -z "$commands" ]]; then
     fi
 fi
 
-# sanity check
-[[ $concurrency -gt 1 ]] && grep -q '^#interact#' <<<"$commands" && error '#interact# is not allowed when combined with concurrency'
-
 # parse tokens within commands
 parse_tokens
+
+# sanity check
+[[ $concurrency -gt 1 ]] && grep -q '^#interact#' <<<"$commands" && error '#interact# is not allowed when combined with concurrency'
 
 # check for active ssh-agent
 if $ssh_agent && ! ssh-add -l >/dev/null 2>&1; then

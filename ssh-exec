@@ -605,7 +605,7 @@ ssh_agent_destroy () {
 
 # parse tokens from commands
 parse_tokens () {
-    local commands_file line tokens username
+    local commands_file line tokens user
 
     tokens=( )
     commands_file="$tmp_dir/commands"
@@ -648,12 +648,12 @@ parse_tokens () {
 
     # expand built-in #passwd# token
     while grep -q '^#passwd' "$commands_file"; do
-        read line username <<<$(awk '/^#passwd/ {if ($2) {print NR,substr($0, index($0,$2), length($2)-1)} else {print NR,"root"}; exit}' "$commands_file")
+        read line user <<<$(awk '/^#passwd/ {if ($2) {print NR,substr($0, index($0,$2), length($2)-1)} else {print NR,"root"}; exit}' "$commands_file")
 
         # insert shell commands for password change
         sed "$line r /dev/stdin" "$commands_file" > "${commands_file}.tmp" <<PASSWD
-passwd $username
-#password:2:Enter new password for $username#
+passwd $user
+#password:2:Enter new password for $user#
 PASSWD
 
         # remove passwd token

@@ -1,0 +1,6 @@
+#passwd#
+#changelog 'change root password'#
+#lockuser $arg1#
+#tripwire#
+tail -n4 /var/adm/changelog*
+grep $arg1 /etc/shadow

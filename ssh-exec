@@ -131,7 +131,7 @@ if {"$root_password" != "#null#"} {
 if {"$sudo_password" != "#null#"} {
     sleep 1
     send "sudo su -\r"
-    expect "*sword" {
+    expect "sword*" {
         send "$sudo_password\r"
         expect "*sword" {
             # send ctrl-c to force a prompt
@@ -139,9 +139,10 @@ if {"$sudo_password" != "#null#"} {
             send "exit\r"
             send_user "\n\n                   #  Aborted! - Invalid SUDO Password: $host  #\n"
             exit
+        } -re $prompt {
+            # send ctrl-c to force a prompt
+            send \003
         }
-    } -re $prompt {
-        sleep 1
     }
 }
 

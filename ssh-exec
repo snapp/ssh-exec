@@ -117,7 +117,7 @@ if {"$root_password" != "#null#"} {
     send "su -\r"
     expect "*sword:" {
         send "$root_password\r"
-        expect "su: *" {
+        expect "*sword" {
             send "exit\r"
             send_user "\n\n                   #  Aborted! - Invalid Root Password: $host  #\n"
             exit
@@ -713,20 +713,15 @@ run_hosts () {
                 echo -e "\nSpawning job $count of $total for $host" |  tr '[:lower:]' '[:upper:]' >&2
 
                 {
-                    # run script if host is available
-                    if ping -qn -c1 "$host" 2>&1 | egrep -q '1 received|1 packets received'; then
-                        # convert patterns to host based passwords
-                        if [[ ${#password_patterns[*]} -gt 0 ]]; then
-                            for pattern in "${password_patterns[@]}"; do
-                                passwords+=( "$(get_password $host "${pattern-}")" )
-                            done
-                        fi
-
-                       expect -f "$script" "$username" "$host" "$(get_password $host "${root_password_pattern-}")" "$(get_password $host "${sudo_password_pattern-}")" "$(get_password $host "${login_password_pattern-}")" "${passwords[@]-}" > "${tmp_dir}/${count}-${host}.running"
-                       mv "${tmp_dir}/${count}-${host}.running" "${tmp_dir}/${count}-${host}.log"
-                    else
-                        echo -e "\n                   #       UNABLE TO PING: $host      #" > "${tmp_dir}/${count}-${host}.log"
+                    # convert patterns to host based passwords
+                    if [[ ${#password_patterns[*]} -gt 0 ]]; then
+                        for pattern in "${password_patterns[@]}"; do
+                            passwords+=( "$(get_password $host "${pattern-}")" )
+                        done
                     fi
+
+                    expect -f "$script" "$username" "$host" "$(get_password $host "${root_password_pattern-}")" "$(get_password $host "${sudo_password_pattern-}")" "$(get_password $host "${login_password_pattern-}")" "${passwords[@]-}" > "${tmp_dir}/${count}-${host}.running"
+                    mv "${tmp_dir}/${count}-${host}.running" "${tmp_dir}/${count}-${host}.log"
                 } &
 
                 ((count+=1))
@@ -735,19 +730,14 @@ run_hosts () {
         else
             echo -e "\nSpawning job $count of $total for $host" |  tr '[:lower:]' '[:upper:]' >&2
 
-            # run script if host is available
-            if ping -qn -c1 "$host" 2>&1 | egrep -q '1 received|1 packets received'; then
-                # convert patterns to host based passwords
-                if [[ ${#password_patterns[*]} -gt 0 ]]; then
-                    for pattern in "${password_patterns[@]}"; do
-                        passwords+=( "$(get_password $host "${pattern-}")" )
-                    done
-                fi
-
-                expect -f "$script" "$username" "$host" "$(get_password $host "${root_password_pattern-}")" "$(get_password $host "${sudo_password_pattern-}")" "$(get_password $host "${login_password_pattern-}")" "${passwords[@]-}"
-            else
-                echo -e "\n                   #       UNABLE TO PING: $host      #"
+            # convert patterns to host based passwords
+            if [[ ${#password_patterns[*]} -gt 0 ]]; then
+                for pattern in "${password_patterns[@]}"; do
+                    passwords+=( "$(get_password $host "${pattern-}")" )
+                done
             fi
+
+            expect -f "$script" "$username" "$host" "$(get_password $host "${root_password_pattern-}")" "$(get_password $host "${sudo_password_pattern-}")" "$(get_password $host "${login_password_pattern-}")" "${passwords[@]-}"
 
             ((count+=1))
             shift

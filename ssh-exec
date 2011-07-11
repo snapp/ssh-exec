@@ -642,39 +642,43 @@ parse_tokens () {
         # load user defined tokens
         tokens=
         for token_file in $recipes_dir/*; do
-            if [[ "$tokens" ]]; then
-                tokens="${tokens}|^#${token_file##*/}"
-            else
-                tokens="^#${token_file##*/}"
+            if [[ -r "$token_file" ]]; then
+                if [[ "$tokens" ]]; then
+                    tokens="${tokens}|^#${token_file##*/}"
+                else
+                    tokens="^#${token_file##*/}"
+                fi
             fi
         done
 
         # expand user defined tokens
-        while read token args <<<$(egrep -n "$tokens" "$commands_file" | head -1 | sed -e 's/#\(.*\)/\1/' -e 's/#$//'); do
-            # if no tokens are found we're done
-            [[ -z "$token" ]] && break
+        if [[ "$tokens" ]]; then
+            while read token args <<<$(egrep -n "$tokens" "$commands_file" | head -1 | sed -e 's/#\(.*\)/\1/' -e 's/#$//'); do
+                # if no tokens are found we're done
+                [[ -z "$token" ]] && break
 
-            read line token <<<$(sed 's/:/ /' <<<"$token")
+                read line token <<<$(sed 's/:/ /' <<<"$token")
 
-            # load recipe from associated token file
-            recipe=$(cat "${recipes_dir}/$token")
+                # load recipe from associated token file
+                recipe=$(cat "${recipes_dir}/$token")
 
-            # replace args within recipe
-            count=1
-            while read arg; do
-                recipe=$(sed "s/\$arg${count}/$arg/g" <<<"$recipe")
-                ((count+=1))
-            done < <(eval "for arg in $args; do echo \$arg; done")
+                # replace args within recipe
+                count=1
+                while read arg; do
+                    recipe=$(sed "s/\$arg${count}/$arg/g" <<<"$recipe")
+                    ((count+=1))
+                done < <(eval "for arg in $args; do echo \$arg; done")
 
-            # sanity check for missing args
-            grep -q '$arg[[:digit:]]' <<<"$recipe" && { echo "ERROR: missing argument for token: $token"; exit 1; }
+                # sanity check for missing args
+                grep -q '$arg[[:digit:]]' <<<"$recipe" && { echo "ERROR: missing argument for token: $token"; exit 1; }
 
-            # replace token with associated recipe
-            sed "$line r /dev/stdin" "$commands_file" > "${commands_file}.tmp" <<<"$recipe"
+                # replace token with associated recipe
+                sed "$line r /dev/stdin" "$commands_file" > "${commands_file}.tmp" <<<"$recipe"
 
-            # remove token
-            sed "${line}d" "${commands_file}.tmp" > "$commands_file"
-        done
+                # remove token
+                sed "${line}d" "${commands_file}.tmp" > "$commands_file"
+            done
+        fi
     fi
 
     # expand built-in #passwd# token

@@ -259,17 +259,40 @@ print_usage () {
         echo -e "    seconds) then ssh-exec will abort execution of your script against that host."
         echo
         echo -e "    ${b}Tokens${c}"
-        echo -e "    ssh-exec tokens are functions that you can add to your script either to control"
-        echo -e "    the execution of your scripe"
+        echo -e "    ssh-exec tokens are identified by the hash (#) mark and are used for two purposes:"
+        echo -e "        1. Control underlying expect functionality"
+        echo -e "        2. Identify a custom recipe"
         echo
-        echo -e "    Tokens are identified by a hash (#) at the start of"
-        echo -e "    a line followed by one of the reserved words listed below."
+        echo -e "    ${b}Recipes${c}"
+        echo -e "    Recipes are custom add-ons created by you to be used as shortcuts to execute"
+        echo -e "    common tasks."
+        echo
+        echo -e "    In order to create a recipe you first need to create the ~/.ssh-exec directory."
+        echo -e "    Each filename within this directory is an identifier for a custom token.  You"
+        echo -e "    can put any script that you would normally type into ssh-exec's stdin into a"
+        echo -e "    file and then use the token syntax to reference it."
+        echo
+        echo -e "    You can pass arguments to your recipes by using \$arg# syntax (e.g. \$arg1,"
+        echo -e "    \$arg2..etc.) when creating your recipe.  Then when you call your recipe via a"
+        echo -e "    token, your args are space delimited within your token tag."
+        echo
+        echo -e "    NOTE: recipes can contain other recipes"
+        echo
+        echo -e "    Example:"
+        echo -e "        # create the recipe #"
+        echo -e "        ~/.ssh-exec/changelog contains:"
+        echo -e "            echo -e \"\$(date +%Y%m%d) \$arg1 \$arg2\" >> /var/adm/changelog*"
+        echo
+        echo -e "        # call the recipe #"
+        echo -e "        ssh-exec example.com <<'EOF'"
+        echo -e "        #changelog cas \"here is arg2's content\"#"
+        echo -e "        EOF"
         echo
     fi
 
     echo -e "${b}OPTIONS${c}"
     echo -e "    ${b}-c${c} ${u}count${c}"
-    echo -e "        the number of jobs to run concurrently; defaults to 10 if no value is provided"
+    echo -e "        the number of jobs to run concurrently; default is 10 if no value is provided"
     echo -e "        NOTE: While the script will execute in separate threads up to the concurrency"
     echo -e "              level you provide, the results will always be returned in the order that"
     echo -e "              you originally specified."
@@ -365,7 +388,7 @@ print_usage () {
         echo
         echo -e "        ssh-exec -r example-{1..50}.com <<<'#interact#'"
         echo
-        echo -e "    ${b}Perform a standard tripwire update; overriding the default concurrency of 10${c}"
+        echo -e "    ${b}Execute a custom recipe for running a tripwire update; overriding the default concurrency of 10${c}"
         echo
         echo -e "        ssh-exec -r -c 25 example-{1..50}.com <<<'#tripwire#'"
         echo
@@ -391,6 +414,8 @@ print_usage () {
         echo -e "        sleep 20; echo 'sleep complete'"
         echo -e "        EOF"
         echo
+        echo -e "${b}COPYRIGHT${c}"
+        sed -n '3,16s/^#//p' $0
     fi
 }
 

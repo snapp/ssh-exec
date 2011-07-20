@@ -25,7 +25,7 @@ set -u
 [[ "$(which expect)" ]] || { echo 'ERROR: expect command is not available'; exit 1; }
 
 prog='ssh-exec'
-version=1.0-RC3
+version=1.0-RC4
 
 commands=
 concurrency=1
@@ -969,6 +969,12 @@ get_password_patterns
 generate_script
 
 # run generated script against all provided hosts while stripping color codes
-run_hosts ${hosts[@]} | sed -r -e 's/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]//g' -e 's/^\x1B\]0;.*\a//' -e 's/# \^C/#/g' -e 's/\r$//' | tee -a "$output"
+# detect sed extended regular expresion option
+if sed -? 2>&1 | grep -q ' -r'; then
+    sed='sed -r'
+else
+    sed='sed -E'
+fi
+run_hosts ${hosts[@]} | $sed -e 's/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]//g' -e 's/^\x1B\]0;.*\a//' -e 's/# \^C/#/g' -e 's/\r$//' | tee -a "$output"
 
 exit 0

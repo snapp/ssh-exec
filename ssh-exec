@@ -25,8 +25,7 @@ set -u
 [[ "$(which expect)" ]] || { echo 'ERROR: expect command is not available'; exit 1; }
 
 prog='ssh-exec'
-version=1.0-RC4
-
+version=11.07
 commands=
 concurrency=1
 hosts=( )
@@ -968,13 +967,21 @@ get_password_patterns
 # convert shell commands into expect script
 generate_script
 
-# run generated script against all provided hosts while stripping color codes
-# detect sed extended regular expresion option
-if sed -? 2>&1 | grep -q ' -r'; then
-    sed='sed -r'
+# run generated script against all provided hosts
+if [[ "$output" != '/dev/null' ]]; then
+    run_hosts ${hosts[@]} | tee -a ".${output}.running"
+
+    # strip color codes
+    # detect sed extended regular expression option
+    if sed -? 2>&1 | grep -q ' -r'; then
+        sed -r -e 's/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]//g' -e 's/^\x1B\]0;.*\a//' -e 's/# \^C/#/g' -e 's/\r$//' ".${output}.running" >> "$output"
+    else
+        sed -E -e 's/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]//g' -e 's/^\x1B\]0;.*\a//' -e 's/# \^C/#/g' -e 's/\r$//' ".${output}.running" >> "$output"
+    fi
+
+    rm -f ".${output}.running"
 else
-    sed='sed -E'
+    run_hosts ${hosts[@]}
 fi
-run_hosts ${hosts[@]} | $sed -e 's/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]//g' -e 's/^\x1B\]0;.*\a//' -e 's/# \^C/#/g' -e 's/\r$//' | tee -a "$output"
 
 exit 0

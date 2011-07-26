@@ -25,7 +25,7 @@ set -u
 [[ "$(which expect)" ]] || { echo 'ERROR: expect command is not available'; exit 1; }
 
 prog='ssh-exec'
-version=11.07
+version=11.07.1
 commands=
 concurrency=1
 hosts=( )
@@ -727,13 +727,16 @@ run_hosts () {
 
         {
             while [[ $finished -le $total ]]; do
-                if [[ -r $(echo ${tmp_dir}/${finished}-*.log) ]]; then
-                    echo -e "\nJob $finished of $total Completed" |  tr '[:lower:]' '[:upper:]' >&2
+                sleep 1
+                for file in ${tmp_dir}/*.log; do
+                    if [[ -r "$file" ]]; then
+                        echo -e "\nJob $finished of $total Completed" |  tr '[:lower:]' '[:upper:]' >&2
 
-                    cat ${tmp_dir}/${finished}-*.log
-                    rm -f ${tmp_dir}/${finished}-*.log
-                    ((finished+=1))
-                fi
+                        cat "$file"
+                        rm -f "$file"
+                        ((finished+=1))
+                    fi
+                done
             done
         } &
 

@@ -25,7 +25,7 @@ set -u
 [[ "$(which expect)" ]] || { echo 'ERROR: expect command is not available'; exit 1; }
 
 prog='ssh-exec'
-version=11.07.1
+version=11.08-SNAPSHOT
 commands=
 concurrency=1
 hosts=( )
@@ -41,6 +41,7 @@ sudo=false
 sudo_password_pattern='#null#'
 login_password_pattern='#null#'
 username="$USER"
+verbose=false
 
 recipes_dir="$HOME/.ssh-exec"
 
@@ -328,6 +329,10 @@ print_usage () {
     echo -e "    ${b}-u${c} ${u}username${c}"
     echo -e "        the username used during initial ssh login; default is your current"
     echo -e "        username"
+    echo
+    echo -e "    ${b}-v${c}  display version information and exit"
+    echo
+    echo -e "    ${b}-V${c}  enable verbose output"
     echo
     echo -e "    ${b}-p${c}  prompt for user password; allows for a fallback if key login fails"
     echo
@@ -730,7 +735,7 @@ run_hosts () {
                 sleep 1
                 for file in ${tmp_dir}/*.log; do
                     if [[ -r "$file" ]]; then
-                        echo -e "\nJob $finished of $total Completed" |  tr '[:lower:]' '[:upper:]' >&2
+                        $verbose && echo -e "\nJob $finished of $total Completed" |  tr '[:lower:]' '[:upper:]' >&2
 
                         cat "$file"
                         rm -f "$file"
@@ -751,7 +756,7 @@ run_hosts () {
             running=$(jobs -p | grep -v $logger_pid | wc -l)
 
             if [[ $running -lt $concurrency ]]; then
-                echo -e "\nSpawning job $count of $total for $host" |  tr '[:lower:]' '[:upper:]' >&2
+                $verbose && echo -e "\nSpawning job $count of $total for $host" |  tr '[:lower:]' '[:upper:]' >&2
 
                 {
                     # convert patterns to host based passwords
@@ -769,7 +774,7 @@ run_hosts () {
                 shift
             fi
         else
-            echo -e "\nSpawning job $count of $total for $host" |  tr '[:lower:]' '[:upper:]' >&2
+            $verbose && echo -e "\nSpawning job $count of $total for $host" |  tr '[:lower:]' '[:upper:]' >&2
 
             # convert patterns to host based passwords
             if [[ ${#password_patterns[*]} -gt 0 ]]; then
@@ -834,6 +839,13 @@ for arg in $@; do
             ;;
         -u)
             username='-u'
+            ;;
+        -v)
+            echo $prog $version
+            exit 0
+            ;;
+        -V)
+            verbose=true
             ;;
          *)
             if [[ "$concurrency" == '-c' ]] && [[ "$arg" =~ ^[0-9]+$ ]]; then

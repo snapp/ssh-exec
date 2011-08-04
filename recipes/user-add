@@ -2,5 +2,3 @@ useradd -u $arg2 -c "$arg3" -s /bin/bash -m $arg1
 #passwd $arg1#
 chage -d 0 $arg1
 #changelog 'add $arg1 user'#
-#interact#
-#tripwire#

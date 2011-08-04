@@ -1,0 +1,5 @@
+#export-path#
+if which rkhunter 2>/dev/null; then
+    rkhunter --versioncheck
+    rkhunter --update
+fi

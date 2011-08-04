@@ -1,1 +1,0 @@
-usermod -L -e $(date -d 'yesterday' '+%Y-%m-%d') $arg1 && echo -e "$(date +%Y%m%d) #user# lock & expire $arg1" >> /var/adm/changelog*

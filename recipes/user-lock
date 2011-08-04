@@ -1,0 +1,4 @@
+if usermod -L -e `TZ=GMT+24 date '+%Y-%m-%d'` $arg1; then
+#changelog "lock & expire $arg1"#
+grep $arg1 /etc/shadow
+fi

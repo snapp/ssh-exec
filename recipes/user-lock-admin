@@ -1,0 +1,3 @@
+#user-lock $arg1#
+#passwd#
+#changelog 'change root password'#

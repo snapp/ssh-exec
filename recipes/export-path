@@ -1,0 +1,2 @@
+PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/ucb:/usr/local/bin:/usr/local/sbin:/opt/local/sbin:/opt/local/bin:/usr/lib:/usr/sfw/bin:/opt/sfw/bin:/usr/etc:/usr/bsd
+export PATH

@@ -1,0 +1,2 @@
+#export-path#
+which rkhunter 2>/dev/null && rkhunter --propupd

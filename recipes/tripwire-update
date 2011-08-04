@@ -1,0 +1,5 @@
+#timeout -1#
+tripwire -m c; tripwire -m u --twrfile "`find /var/lib/tripwire/report/ -cmin -1 -type f`" -a
+#expect "passphrase:"#
+#password::Enter password for tripwire#
+#timeout#

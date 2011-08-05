@@ -1,4 +1,4 @@
 # Installation #
 1. ensure the ssh-exec script is in your $PATH
-2. move the example 'recipes' directory to ~/.ssh-exec (optional)
+2. copy the examples found in 'recipes' to ~/.ssh-exec (optional)
 3. ssh-exec --help   to learn more

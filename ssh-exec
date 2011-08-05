@@ -130,7 +130,7 @@ if {"$root_password" != "#null#"} {
 
 if {"$sudo_password" != "#null#"} {
     sleep 1
-    send "sudo su -\r"
+    send "sudo su - root\r"
     expect "sword*" {
         send "$sudo_password\r"
         expect "*sword" {
@@ -318,7 +318,7 @@ print_usage () {
     echo
     echo -e "    ${b}-r${c}  run commands as root via 'su -' authentication"
     echo
-    echo -e "    ${b}-R${c}  run commands as root via 'sudo su -' authentication"
+    echo -e "    ${b}-R${c}  run commands as root via 'sudo su - root' authentication"
     echo -e "        NOTE: You will be prompted for the password necessary for sudo to"
     echo -e "              execute."
     echo -e "              This password will only be used if the server prompts for it."

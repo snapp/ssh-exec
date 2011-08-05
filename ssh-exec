@@ -120,7 +120,7 @@ if {"$root_password" != "#null#"} {
         expect "*sword" {
             send "exit\r"
             send_user "\n\n                   #  Aborted! - Invalid Root Password: $host  #\n"
-            exit
+            exit 2
         } -re $prompt {
             # send ctrl-c to force a prompt
             send \003
@@ -138,7 +138,7 @@ if {"$sudo_password" != "#null#"} {
             send \003
             send "exit\r"
             send_user "\n\n                   #  Aborted! - Invalid SUDO Password: $host  #\n"
-            exit
+            exit 2
         } -re $prompt {
             # send ctrl-c to force a prompt
             send \003
@@ -728,6 +728,14 @@ run_hosts () {
 
     # watch for finished host output to print to stdout
     if [[ $concurrency -gt 1 ]]; then
+        # check root password on first host before we hit everyone with an incorrect password
+        if $su || $sudo; then
+            echo -en '\n\n                   # Validating Root Password...'
+            expect -f <(sed '/#COMMANDS#/d' "$script") "$username" "$1" "$(get_password $1 "${root_password_pattern-}")" "$(get_password $1 "${sudo_password_pattern-}")" "$(get_password $1 "${login_password_pattern-}")" > /dev/null 2>&1
+            [[ $? -eq 2 ]] && { echo -e 'FAILED #\n'; echo "ABORT: Failed to authenticate as root on host: $1"; exit 1; }
+            echo -e 'OK #\n'
+        fi
+
         finished=1
 
         {
@@ -747,6 +755,9 @@ run_hosts () {
 
        logger_pid=$!
     fi
+
+    # convert shell commands into expect script
+    generate_script
 
     while [[ $# -gt 0 ]]; do
         passwords=( )
@@ -784,6 +795,8 @@ run_hosts () {
             fi
 
             expect -f "$script" "$username" "$host" "$(get_password $host "${root_password_pattern-}")" "$(get_password $host "${sudo_password_pattern-}")" "$(get_password $host "${login_password_pattern-}")" "${passwords[@]-}"
+
+            [[ $? -eq 2 ]] && { echo "ABORT: Failed to authenticate as root on host: $host"; exit 1; }
 
             ((count+=1))
             shift
@@ -978,9 +991,6 @@ $load_ssh_agent && ssh_agent_init
 
 # collect password patterns from user
 get_password_patterns
-
-# convert shell commands into expect script
-generate_script
 
 # run generated script against all provided hosts
 if [[ "$output" != '/dev/null' ]]; then

@@ -559,6 +559,12 @@ generate_script () {
 
     count=0
 
+    # disable logging connect/disconnect if not in verbose mode
+    if ! $verbose; then
+        sed '/onnect:  /d' "$script" > "${script}.tmp"
+        mv "${script}.tmp" "$script"
+    fi
+
     # initial command conversion
     sed '/^#COMMANDS#/ r /dev/stdin' $script > "${script}.tmp" < \
         <(sed -e '/^#/! s_\\\(.\)_\\\\\1_g' \
@@ -732,8 +738,13 @@ run_hosts () {
         if $su || $sudo; then
             echo -en '\n\n                   # Validating Root Password...'
             expect -f <(sed '/#COMMANDS#/d' "$script") "$username" "$1" "$(get_password $1 "${root_password_pattern-}")" "$(get_password $1 "${sudo_password_pattern-}")" "$(get_password $1 "${login_password_pattern-}")" > /dev/null 2>&1
-            [[ $? -eq 2 ]] && { echo -e 'FAILED #\n'; echo "ABORT: Failed to authenticate as root on host: $1"; exit 1; }
-            echo -e 'OK #\n'
+            if [[ $? -eq 2 ]]; then
+                echo -e 'FAILED #\n'
+                echo "ABORT: Failed to authenticate as root on host: $1"
+                exit 1
+            else
+                echo -e 'OK #\n'
+            fi
         fi
 
         finished=1
@@ -778,6 +789,10 @@ run_hosts () {
                     fi
 
                     expect -f "$script" "$username" "$host" "$(get_password $host "${root_password_pattern-}")" "$(get_password $host "${sudo_password_pattern-}")" "$(get_password $host "${login_password_pattern-}")" "${passwords[@]-}" > "${tmp_dir}/${count}-${host}.running"
+
+                    # insert white space following host disconnect
+                    $verbose || echo -e '\n' >> "${tmp_dir}/${count}-${host}.running"
+
                     mv "${tmp_dir}/${count}-${host}.running" "${tmp_dir}/${count}-${host}.log"
                 } &
 
@@ -797,6 +812,9 @@ run_hosts () {
             expect -f "$script" "$username" "$host" "$(get_password $host "${root_password_pattern-}")" "$(get_password $host "${sudo_password_pattern-}")" "$(get_password $host "${login_password_pattern-}")" "${passwords[@]-}"
 
             [[ $? -eq 2 ]] && { echo "ABORT: Failed to authenticate as root on host: $host"; exit 1; }
+
+            # insert white space following host disconnect
+            $verbose || echo -e '\n'
 
             ((count+=1))
             shift

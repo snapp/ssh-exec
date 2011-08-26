@@ -55,7 +55,7 @@ trap 'stty echo; cat $tmp_dir/*.{running,log} 2>/dev/null; echo -e "\nAborted!" 
 cat > "$script" <<'EXPECT'
 #!/usr/bin/expect
 set timeout 10
-set prompt "(>|%|#|\\$) $"
+set prompt "(>|%|#|\\$) (\x1B.*)*$"
 set username [lindex $argv 0]
 set host [lindex $argv 1]
 set root_password [lindex $argv 2]

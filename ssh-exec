@@ -41,6 +41,7 @@ sudo=false
 sudo_password_pattern='#null#'
 login_password_pattern='#null#'
 username="$USER"
+debug=false
 verbose=false
 
 recipes_dir="$HOME/.ssh-exec"
@@ -304,6 +305,8 @@ print_usage () {
     echo -e "              concurrency level you provide, the results will always be"
     echo -e "              returned in the order that you originally specified."
     echo
+    echo -e "    ${b}-d${c}  enable debug mode (print ALL output)"
+    echo
     echo -e "    ${b}-f${c} ${u}file${c}"
     echo -e "        the file containing commands to be executed"
     echo
@@ -559,6 +562,12 @@ generate_script () {
 
     count=0
 
+    # print all output if debug is enabled
+    if $debug; then
+        sed 's/log_user 0/log_user 1/' "$script" > "${script}.tmp"
+        mv "${script}.tmp" "$script"
+    fi
+
     # disable logging connect/disconnect if not in verbose mode
     if ! $verbose; then
         sed '/onnect:  /d' "$script" > "${script}.tmp"
@@ -754,7 +763,7 @@ run_hosts () {
                 sleep 1
                 for file in ${tmp_dir}/*.log; do
                     if [[ -r "$file" ]]; then
-                        $verbose && echo -e "\nJob $finished of $total Completed" |  tr '[:lower:]' '[:upper:]' >&2
+                        $debug && echo -e "\nJob $finished of $total Completed" |  tr '[:lower:]' '[:upper:]' >&2
 
                         cat "$file"
                         rm -f "$file"
@@ -778,7 +787,7 @@ run_hosts () {
             running=$(jobs -p | grep -v $logger_pid | wc -l)
 
             if [[ $running -lt $concurrency ]]; then
-                $verbose && echo -e "\nSpawning job $count of $total for $host" |  tr '[:lower:]' '[:upper:]' >&2
+                $debug && echo -e "\nSpawning job $count of $total for $host" |  tr '[:lower:]' '[:upper:]' >&2
 
                 {
                     # convert patterns to host based passwords
@@ -800,7 +809,7 @@ run_hosts () {
                 shift
             fi
         else
-            $verbose && echo -e "\nSpawning job $count of $total for $host" |  tr '[:lower:]' '[:upper:]' >&2
+            $debug && echo -e "\nSpawning job $count of $total for $host" |  tr '[:lower:]' '[:upper:]' >&2
 
             # convert patterns to host based passwords
             if [[ ${#password_patterns[*]} -gt 0 ]]; then
@@ -834,6 +843,10 @@ for arg in $@; do
             ;;
         -c[0-9]*)
             concurrency=${arg#-c}
+            ;;
+        -d)
+            debug=true
+            verbose=true
             ;;
         -h)
             print_usage 'verbose' >&2

@@ -57,11 +57,11 @@ cat > "$script" <<'EXPECT'
 #!/usr/bin/expect
 set timeout 10
 set prompt "(>|%|#|\\$) (\x1B.*)*$"
-set username [lindex $argv 0]
-set host [lindex $argv 1]
-set root_password [lindex $argv 2]
-set sudo_password [lindex $argv 3]
-set login_password [lindex $argv 4]
+set username "#username#"
+set host "#host#"
+set root_password "#password1#"
+set sudo_password "#password2#"
+set login_password "#password3#"
 
 log_user 0
 
@@ -557,25 +557,29 @@ get_password_patterns () {
 }
 
 # convert provided commands into expect commands
-generate_script () {
-    local count
+insert_commands () {
+    local count output
+
+    output="$(mktemp -u -p $tmp_dir -t XXXXX)"
+    cp "$1" "$output"
+    shift
 
     count=0
 
     # print all output if debug is enabled
     if $debug; then
-        sed 's/log_user 0/log_user 1/' "$script" > "${script}.tmp"
-        mv "${script}.tmp" "$script"
+        sed 's/log_user 0/log_user 1/' "$output" > "${output}.tmp"
+        mv "${output}.tmp" "$output"
     fi
 
     # disable logging connect/disconnect if not in verbose mode
     if ! $verbose; then
-        sed '/onnect:  /d' "$script" > "${script}.tmp"
-        mv "${script}.tmp" "$script"
+        sed '/onnect:  /d' "$output" > "${output}.tmp"
+        mv "${output}.tmp" "$output"
     fi
 
     # initial command conversion
-    sed '/^#COMMANDS#/ r /dev/stdin' $script > "${script}.tmp" < \
+    sed '/^#COMMANDS#/ r /dev/stdin' $output > "${output}.tmp" < \
         <(sed -e '/^#/! s_\\\(.\)_\\\\\1_g' \
             -e '/^#/! s_\$_\\$_g' \
             -e '/^#/! s_\"_\\\"_g' \
@@ -587,29 +591,29 @@ generate_script () {
             -e 's_^#\(timeout .*\)#.*_set \1_' \
             -e 's_^#\(expect .*\)#.*_\1_' \
             <<<"$commands")
-    sed '/^#COMMANDS#/d' "${script}.tmp" > "$script"
+    sed '/^#COMMANDS#/d' "${output}.tmp" > "$output"
 
     # replace #password# token with expect code
     count=4
-    while grep -q '^#password' "$script"; do
-        read line password_count <<<$(awk -F: '/^#password/ {if ($2) {print NR,$2} else {print NR,1}; exit}' "$script")
-        ((count+=1))
+    while grep -q '^#password' "$output"; do
+        read line password_count <<<$(awk -F: '/^#password/ {if ($2) {print NR,$2} else {print NR,1}; exit}' "$output")
         password_count=${password_count%#}
 
         # remove password token
-        sed "$line r /dev/stdin" "$script" > "${script}.tmp" < <(
-            echo "set password${count} [lindex \$argv $count]"
+        sed "$line r /dev/stdin" "$output" > "${output}.tmp" < <(
+            echo "set password${count} \"#password${count}#\""
             for i in $(eval "echo {1..$password_count}"); do
                 echo 'sleep 1'
                 echo "send \"\$password${count}\r\""
             done
         )
 
-        sed "${line}d" "${script}.tmp" > "$script"
+        sed "${line}d" "${output}.tmp" > "$output"
+        ((count+=1))
     done
 
     # expand built-in #interact# token
-    while read line args <<<$(grep -n "^#interact" "$script" | head -1 | sed -e 's/:#interact\(.*\)/\1/' -e 's/#$//'); do
+    while read line args <<<$(grep -n "^#interact" "$output" | head -1 | sed -e 's/:#interact\(.*\)/\1/' -e 's/#$//'); do
         # if no tokens are found we're done
         [[ -z "$line" ]] && break
 
@@ -617,9 +621,11 @@ generate_script () {
         args=$(sed -e "s/^'//" -e "s/'$//" -e 's/^"//' -e 's/"$//' -e 's/"/\\"/g' <<<"$args")
 
         # replace #interact# token with expect code
-        sed "$line r /dev/stdin" "$script" > "${script}.tmp" <<INTERACT
+        sed "$line r /dev/stdin" "$output" > "${output}.tmp" <<INTERACT
 send_user "\n\n                   ##      Entering Interactive Mode      ##\n"
 send_user "                   ### type \"#x\" to end your interaction ###\n"
+send "\r"
+expect -re \$prompt
 send "$args\r"
 expect *
 interact {
@@ -636,10 +642,41 @@ interact {
 }
 INTERACT
 
-        sed "${line}d" "${script}.tmp" > "$script"
+        sed "${line}d" "${output}.tmp" > "$output"
     done
 
-    rm -f "${script}.tmp"
+    cat <(insert_expect_args "${output}" "$@")
+
+    rm -f "${output}"*
+}
+
+# insert passwords into expect script
+insert_expect_args () {
+    local count host password output
+
+    output="$(mktemp -u -p $tmp_dir -t XXXXX)"
+    cp "$1" "$output"
+    shift
+
+    sed "s|#username#|$1|g" "$output" > "${output}.tmp"
+    shift
+
+    sed "s|#host#|$1|g" "${output}.tmp" > "$output"
+    host="$1"
+    shift
+
+    count=1
+    while [[ $# -gt 0 ]]; do
+        password=$(get_password "$host" "${1-}")
+        sed "s|#password$count#|${password//\"/\\\\\"}|g" "$output" > "${output}.tmp"
+        cat "${output}.tmp" > "$output"
+        ((count+=1))
+        shift
+    done
+
+    cat "${output}.tmp"
+
+    rm -f "${output}"*
 }
 
 # initialize ssh agent
@@ -753,7 +790,7 @@ run_hosts () {
         # check root password on first host before we hit everyone with an incorrect password
         if $su || $sudo; then
             echo -en '\n\n                   # Validating Root Password...'
-            expect -f <(sed '/#COMMANDS#/d' "$script") "$username" "$1" "$(get_password $1 "${root_password_pattern-}")" "$(get_password $1 "${sudo_password_pattern-}")" "$(get_password $1 "${login_password_pattern-}")" > /dev/null 2>&1
+            cat <(insert_expect_args "$script" "$username" "$1" "${root_password_pattern-}" "${sudo_password_pattern-}" "${login_password_pattern-}") | sed '/#COMMANDS#/d' | expect - > /dev/null 2>&1
             if [[ $? -eq 2 ]]; then
                 echo -e 'FAILED #\n'
                 echo "ABORT: Failed to authenticate as root on host: $1"
@@ -783,9 +820,6 @@ run_hosts () {
        logger_pid=$!
     fi
 
-    # convert shell commands into expect script
-    generate_script
-
     while [[ $# -gt 0 ]]; do
         passwords=( )
         host="$1"
@@ -804,7 +838,8 @@ run_hosts () {
                         done
                     fi
 
-                    expect -f "$script" "$username" "$host" "$(get_password $host "${root_password_pattern-}")" "$(get_password $host "${sudo_password_pattern-}")" "$(get_password $host "${login_password_pattern-}")" "${passwords[@]-}" > "${tmp_dir}/${count}-${host}.running"
+                    # run expect script via stdin to avoid passwords being exposed via ps
+                    expect -f <(insert_commands "$script" "$username" "$host" "${root_password_pattern-}" "${sudo_password_pattern-}" "${login_password_pattern-}" "${passwords[@]-}") > "${tmp_dir}/${count}-${host}.running"
 
                     # insert white space following host disconnect
                     $verbose || echo -e '\n' >> "${tmp_dir}/${count}-${host}.running"
@@ -825,7 +860,8 @@ run_hosts () {
                 done
             fi
 
-            expect -f "$script" "$username" "$host" "$(get_password $host "${root_password_pattern-}")" "$(get_password $host "${sudo_password_pattern-}")" "$(get_password $host "${login_password_pattern-}")" "${passwords[@]-}"
+            # run expect script via stdin to avoid passwords being exposed via ps
+            expect -f <(insert_commands "$script" "$username" "$host" "${root_password_pattern-}" "${sudo_password_pattern-}" "${login_password_pattern-}" "${passwords[@]-}")
 
             [[ $? -eq 2 ]] && { echo "ABORT: Failed to authenticate as root on host: $host"; exit 1; }
 

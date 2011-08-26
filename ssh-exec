@@ -589,30 +589,6 @@ generate_script () {
             <<<"$commands")
     sed '/^#COMMANDS#/d' "${script}.tmp" > "$script"
 
-    # replace #interact# token with expect code
-    sed '/^#interact#/ r /dev/stdin' $script > "${script}.tmp" <<'INTERACT'
-send_user "\n\n                   ##      Entering Interactive Mode      ##\n"
-send_user "                   ### type \"#x\" to end your interaction ###\n"
-send "\r"
-expect -re $prompt
-interact {
-    \#x {
-        send_user "\n\n                   ##      Exiting Interactive Mode       ##\n"
-        # send ctrl-c to force a prompt
-        send \003
-        return
-    }
-    -o eof {
-        send_user "\n\n                   #  Aborted! - User Disconnected During Interact: $host  #\n"
-        exit
-    }
-}
-INTERACT
-
-    # remove interact token
-    sed '/^#interact/d' "${script}.tmp" > "$script"
-
-
     # replace #password# token with expect code
     count=4
     while grep -q '^#password' "$script"; do
@@ -628,6 +604,37 @@ INTERACT
                 echo "send \"\$password${count}\r\""
             done
         )
+
+        sed "${line}d" "${script}.tmp" > "$script"
+    done
+
+    # expand built-in #interact# token
+    while read line args <<<$(grep -n "^#interact" "$script" | head -1 | sed -e 's/:#interact\(.*\)/\1/' -e 's/#$//'); do
+        # if no tokens are found we're done
+        [[ -z "$line" ]] && break
+
+        # remove leading and trailing quotes while escaping double quotes
+        args=$(sed -e "s/^'//" -e "s/'$//" -e 's/^"//' -e 's/"$//' -e 's/"/\\"/g' <<<"$args")
+
+        # replace #interact# token with expect code
+        sed "$line r /dev/stdin" "$script" > "${script}.tmp" <<INTERACT
+send_user "\n\n                   ##      Entering Interactive Mode      ##\n"
+send_user "                   ### type \"#x\" to end your interaction ###\n"
+send "$args\r"
+expect *
+interact {
+    \#x {
+        send_user "\n\n                   ##      Exiting Interactive Mode       ##\n"
+        # send ctrl-c to force a prompt
+        send \003
+        return
+    }
+    -o eof {
+        send_user "\n\n                   #  Aborted! - User Disconnected During Interact: \$host  #\n"
+        exit
+    }
+}
+INTERACT
 
         sed "${line}d" "${script}.tmp" > "$script"
     done
@@ -720,7 +727,7 @@ PASSWD
 
         # remove passwd token
         sed "${line}d" "${commands_file}.tmp" > "$commands_file"
-     done
+    done
 
     # expand built-in #user# token
     commands=$(sed "s/#user#/$username/" "$commands_file")

@@ -57,6 +57,7 @@ cat > "$script" <<'EXPECT'
 #!/usr/bin/expect
 set timeout 10
 set prompt "(>|%|#|\\$) (\x1B.*)*$"
+set root_prompt "# (\x1B.*)*$"
 set username "#username#"
 set host "#host#"
 set root_password "#password1#"
@@ -122,7 +123,7 @@ if {"$root_password" != "#null#"} {
             send "exit\r"
             send_user "\n\n                   #  Aborted! - Invalid Root Password: $host  #\n"
             exit 2
-        } -re $prompt {
+        } -re $root_prompt {
             # send ctrl-c to force a prompt
             send \003
         }
@@ -140,10 +141,13 @@ if {"$sudo_password" != "#null#"} {
             send "exit\r"
             send_user "\n\n                   #  Aborted! - Invalid SUDO Password: $host  #\n"
             exit 2
-        } -re $prompt {
+        } -re $root_prompt {
             # send ctrl-c to force a prompt
             send \003
         }
+    } -re $root_prompt {
+        # send ctrl-c to force a prompt
+        send \003
     }
 }
 

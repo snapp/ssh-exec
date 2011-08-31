@@ -30,7 +30,8 @@ commands=
 concurrency=1
 hosts=( )
 load_ssh_agent=false
-output=/dev/null
+output_file=/dev/null
+output_dir=
 password_auth=false
 password_patterns=( )
 password_prompts=( )
@@ -49,7 +50,7 @@ recipes_dir="$HOME/.ssh-exec"
 tmp_dir="$(mktemp -dt $prog.XXXXX)" || error 'cannot create temp directory!'
 script="${tmp_dir}/commands.exp"
 
-trap 'rm -rf $tmp_dir; $load_ssh_agent && ssh_agent_destroy; exit;' EXIT
+trap 'rm -rf $tmp_dir; rmdir $output_dir 2>/dev/null; $load_ssh_agent && ssh_agent_destroy; exit;' EXIT
 trap 'stty echo; cat $tmp_dir/*.{running,log} 2>/dev/null; echo -e "\nAborted!" >&2; rm -rf $tmp_dir; jobs -p | xargs kill 2>/dev/null; $load_ssh_agent && ssh_agent_destroy; exit;' INT TERM
 
 # initialize expect script used during ssh session
@@ -169,7 +170,6 @@ if {$connected} {
     send_user "\n\n                   #       Disconnect:  $host       #\n"
 }
 EXPECT
-
 
 # print command usage
 #
@@ -301,7 +301,6 @@ print_usage () {
 
     echo -e "${b}OPTIONS${c}"
     echo -e "    ${b}-c${c} ${u}count${c}"
-    echo -e "    -c count"
     echo -e "        the number of jobs to run concurrently; default is 10 if no value is"
     echo -e "        provided"
     echo
@@ -321,7 +320,13 @@ print_usage () {
     echo -e "    ${b}-i${c}  provide interactive shell against each host in turn"
     echo
     echo -e "    ${b}-o${c} ${u}file${c}"
-    echo -e "        the file where STDOUT should be logged"
+    echo -e "        the file where each system's output will be logged"
+    echo -e "        NOTE: if no file name is provided a unique one will be generated"
+    echo
+    echo -e "    ${b}-O${c} ${u}directory${c}"
+    echo -e "        the directory where each system's output will be logged as a"
+    echo -e "        separate file."
+    echo -e "        NOTE: if no directory is provided a unique one will be generated"
     echo
     echo -e "    ${b}-r${c}  run commands as root via 'su -' authentication"
     echo
@@ -784,10 +789,19 @@ PASSWD
 #
 # $1 - host - the host to run script against
 run_hosts () {
-    local count host logger_pid passwords total
+    local count host logger_pid passwords total prev_batch batch
 
+    batch=1
     count=1
     total=$#
+
+    # determine batch number if outputting to existing directory
+    if [[ -n "$output_dir" ]]; then
+        prev_batch=$(ls -1 "$output_dir" | tail -n1)
+        batch=$(expr ${prev_batch%%x*} + 1)
+    fi
+
+    [[ $batch -lt 9 ]] && batch="0${batch}"
 
     # watch for finished host output to print to stdout
     if [[ $concurrency -gt 1 ]]; then
@@ -814,7 +828,15 @@ run_hosts () {
                         $debug && echo -e "\nJob $finished of $total Completed" |  tr '[:lower:]' '[:upper:]' >&2
 
                         cat "$file"
-                        rm -f "$file"
+
+                        if [[ -n "$output_dir" ]]; then
+                            strip_color_codes "$file"
+                            output="${output_dir}/${file##*/}"
+                            mv "$file" "${output%.log}"
+                        else
+                            rm -f "$file"
+                        fi
+
                         ((finished+=1))
                     fi
                 done
@@ -827,6 +849,12 @@ run_hosts () {
     while [[ $# -gt 0 ]]; do
         passwords=( )
         host="$1"
+
+        if [[ $count -gt 9 ]]; then
+            output="${batch}x${count}-${host}"
+        else
+            output="${batch}x0${count}-${host}"
+        fi
 
         if [[ $concurrency -gt 1 ]]; then
             running=$(jobs -p | grep -v $logger_pid | wc -l)
@@ -843,12 +871,12 @@ run_hosts () {
                     fi
 
                     # run expect script via stdin to avoid passwords being exposed via ps
-                    expect -f <(insert_commands "$script" "$username" "$host" "${root_password_pattern-}" "${sudo_password_pattern-}" "${login_password_pattern-}" "${passwords[@]-}") > "${tmp_dir}/${count}-${host}.running"
+                    expect -f <(insert_commands "$script" "$username" "$host" "${root_password_pattern-}" "${sudo_password_pattern-}" "${login_password_pattern-}" "${passwords[@]-}") > "${tmp_dir}/${output}.running"
 
                     # insert white space following host disconnect
-                    $verbose || echo -e '\n' >> "${tmp_dir}/${count}-${host}.running"
+                    $verbose || echo -e '\n' >> "${tmp_dir}/${output}.running"
 
-                    mv "${tmp_dir}/${count}-${host}.running" "${tmp_dir}/${count}-${host}.log"
+                    mv "${tmp_dir}/${output}.running" "${tmp_dir}/${output}.log"
                 } &
 
                 ((count+=1))
@@ -865,12 +893,17 @@ run_hosts () {
             fi
 
             # run expect script via stdin to avoid passwords being exposed via ps
-            expect -f <(insert_commands "$script" "$username" "$host" "${root_password_pattern-}" "${sudo_password_pattern-}" "${login_password_pattern-}" "${passwords[@]-}")
+            expect -f <(insert_commands "$script" "$username" "$host" "${root_password_pattern-}" "${sudo_password_pattern-}" "${login_password_pattern-}" "${passwords[@]-}") | tee -a "${tmp_dir}/${output}.running"
 
             [[ $? -eq 2 ]] && { echo "ABORT: Failed to authenticate as root on host: $host"; exit 1; }
 
             # insert white space following host disconnect
-            $verbose || echo -e '\n'
+            $verbose || echo -e '\n' | tee -a "${tmp_dir}/${output}.running"
+
+            if [[ -n "$output_dir" ]]; then
+                strip_color_codes "${tmp_dir}/${output}.running"
+                mv "${tmp_dir}/${output}.running" "${output_dir}/${output}"
+            fi
 
             ((count+=1))
             shift
@@ -880,6 +913,19 @@ run_hosts () {
     wait
 }
 
+# strip color codes from input file
+#
+# $1 - file - the file to strip color codes from
+strip_color_codes () {
+    # detect sed extended regular expression option
+    if sed -? 2>&1 | grep -q ' -r'; then
+        sed -r -e 's/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]//g' -e 's/^\x1B\]0;.*\a//' -e 's/# \^C/#/g' -e 's/\r$//' "$1" >> "${1}.tmp"
+    else
+        sed -E -e 's/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]//g' -e 's/^\x1B\]0;.*\a//' -e 's/# \^C/#/g' -e 's/\r$//' "$1" >> "${1}.tmp"
+    fi
+
+    mv "${1}.tmp" "$1"
+}
 
 
 # process arguments
@@ -907,7 +953,10 @@ for arg in $@; do
             commands='#interact#'
             ;;
         -o)
-            output='-o'
+            output_file='-o'
+            ;;
+        -O)
+            output_dir='-O'
             ;;
         -p)
             ssh_agent=true
@@ -940,12 +989,34 @@ for arg in $@; do
             ;;
          *)
             if [[ "$concurrency" == '-c' ]] && [[ "$arg" =~ ^[0-9]+$ ]]; then
-                    concurrency=$arg
+                concurrency=$arg
             elif [[ "$commands" == '-f' ]]; then
                 [[ ! -r "$arg" ]] && error 'cannot read provided command file'
                 commands=$(cat "$arg")
-            elif [[ "$output" == '-o' ]]; then
-                output="$arg"
+            elif [[ "$output_file" == '-o' ]]; then
+                # check if arg looks like a hostname or argument
+                if [[ "$arg" =~ (com|edu|gov|mil)$ ]] || [[ "$arg" =~ ^-. ]]; then
+                    hosts+=( "$arg" )
+
+                    # generate filename since none was provided
+                    output_file="$HOME/ssh-exec.$(date +%Y%m%d_%H%M%S)"
+                else
+                    output_file="$arg"
+                    [[ -e "$output_file" ]] && output_file="$output_file.$(date +%Y%m%d_%H%M%S)"
+                fi
+            elif [[ "$output_dir" == '-O' ]]; then
+                # check if arg looks like a hostname or argument
+                if [[ "$arg" =~ (com|edu|gov|mil)$ ]] || [[ "$arg" =~ ^-. ]]; then
+                    hosts+=( "$arg" )
+
+                    # generate filename since none was provided
+                    output_dir="$HOME/ssh-exec.$(date +%Y%m%d)"
+                else
+                    output_dir="$arg"
+                fi
+
+                [[ -f "$output_dir" ]] && error "file already exists with name '$output_dir'"
+                mkdir -p "$output_dir"
             elif [[ "$username" == '-u' ]]; then
                 username="$arg"
             else
@@ -1033,6 +1104,16 @@ fi
         echo -e '\tThis agent will be destroyed when ssh-exec exits.'
     fi
 
+    if [[ -n "$output_dir" ]]; then
+        echo -e '\nNOTE:'
+        echo -e "\tEach server's output will be saved to a separate file in:\n\t\t$output_dir"
+    fi
+
+    if [[ "$output_file" != '/dev/null' ]]; then
+        echo -e '\nNOTE:'
+        echo -e "\tAll server output will be saved to:\n\t\t$output_file"
+    fi
+
     warnings=( )
     # hand-holding: check for password change without password being provided
     if ! grep -q '^#password:2' <<<"$commands"; then
@@ -1050,7 +1131,7 @@ fi
             echo -e "\t* $warning\n"
         done
     fi
-} | tee -a "$output"
+} | tee -a "$output_file"
 
 # flush stdin before prompting to continue
 0<&-
@@ -1071,18 +1152,9 @@ $load_ssh_agent && ssh_agent_init
 get_password_patterns
 
 # run generated script against all provided hosts
-if [[ "$output" != '/dev/null' ]]; then
-    run_hosts ${hosts[@]} | tee -a ".${output}.running"
-
-    # strip color codes
-    # detect sed extended regular expression option
-    if sed -? 2>&1 | grep -q ' -r'; then
-        sed -r -e 's/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]//g' -e 's/^\x1B\]0;.*\a//' -e 's/# \^C/#/g' -e 's/\r$//' ".${output}.running" >> "$output"
-    else
-        sed -E -e 's/\x1B\[([0-9]{1,2}(;[0-9]{1,2})?)?[m|K]//g' -e 's/^\x1B\]0;.*\a//' -e 's/# \^C/#/g' -e 's/\r$//' ".${output}.running" >> "$output"
-    fi
-
-    rm -f ".${output}.running"
+if [[ "$output_file" != '/dev/null' ]]; then
+    run_hosts ${hosts[@]} | tee -a "${output_file}"
+    strip_color_codes "${output_file}"
 else
     run_hosts ${hosts[@]}
 fi

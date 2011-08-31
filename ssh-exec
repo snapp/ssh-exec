@@ -26,24 +26,26 @@ set -u
 
 prog='ssh-exec'
 version=11.08-SNAPSHOT
-commands=
+username="$USER"
 concurrency=1
-hosts=( )
-load_ssh_agent=false
 output_file=/dev/null
 output_dir=
-password_auth=false
+commands=
+login_password_pattern='#null#'
+root_password_pattern='#null#'
+sudo_password_pattern='#null#'
 password_patterns=( )
 password_prompts=( )
-root_password_pattern='#null#'
+hosts=( )
+password_auth=false
+debug=false
+quiet=false
+silent=false
+verbose=false
 ssh_agent=true
+load_ssh_agent=false
 su=false
 sudo=false
-sudo_password_pattern='#null#'
-login_password_pattern='#null#'
-username="$USER"
-debug=false
-verbose=false
 
 recipes_dir="$HOME/.ssh-exec"
 
@@ -327,6 +329,10 @@ print_usage () {
     echo -e "        the directory where each system's output will be logged as a"
     echo -e "        separate file."
     echo -e "        NOTE: if no directory is provided a unique one will be generated"
+    echo
+    echo -e "    ${b}-q${c}  enable quiet mode (only prints job status to screen)"
+    echo
+    echo -e "    ${b}-Q${c}  enable silent mode (no printing of any output to screen)"
     echo
     echo -e "    ${b}-r${c}  run commands as root via 'su -' authentication"
     echo
@@ -825,9 +831,9 @@ run_hosts () {
                 sleep 1
                 for file in ${tmp_dir}/*.log; do
                     if [[ -r "$file" ]]; then
-                        $debug && echo -e "\nJob $finished of $total Completed" |  tr '[:lower:]' '[:upper:]' >&2
+                        [[ $debug || $quiet ]] && echo -e "\nJob $finished of $total Completed" |  tr '[:lower:]' '[:upper:]' >&2
 
-                        cat "$file"
+                        [[ ! $quiet && ! $silent ]] && cat "$file"
 
                         if [[ -n "$output_dir" ]]; then
                             strip_color_codes "$file"
@@ -860,7 +866,7 @@ run_hosts () {
             running=$(jobs -p | grep -v $logger_pid | wc -l)
 
             if [[ $running -lt $concurrency ]]; then
-                $debug && echo -e "\nSpawning job $count of $total for $host" |  tr '[:lower:]' '[:upper:]' >&2
+                [[ $debug || $quiet ]] && echo -e "\nSpawning job $count of $total for $host" |  tr '[:lower:]' '[:upper:]' >&2
 
                 {
                     # convert patterns to host based passwords
@@ -883,7 +889,7 @@ run_hosts () {
                 shift
             fi
         else
-            $debug && echo -e "\nSpawning job $count of $total for $host" |  tr '[:lower:]' '[:upper:]' >&2
+            [[ $debug || $quiet ]] && echo -e "\nSpawning job $count of $total for $host" |  tr '[:lower:]' '[:upper:]' >&2
 
             # convert patterns to host based passwords
             if [[ ${#password_patterns[*]} -gt 0 ]]; then
@@ -899,6 +905,8 @@ run_hosts () {
 
             # insert white space following host disconnect
             $verbose || echo -e '\n' | tee -a "${tmp_dir}/${output}.running"
+
+            [[ $debug || $quiet ]] && echo -e "\nJob $count of $total Completed" |  tr '[:lower:]' '[:upper:]' >&2
 
             if [[ -n "$output_dir" ]]; then
                 strip_color_codes "${tmp_dir}/${output}.running"
@@ -966,6 +974,13 @@ for arg in $@; do
             ssh_agent=false
             password_auth=true
             ;;
+        -q)
+            quiet=true
+            ;;
+        -Q)
+            quiet=true
+            silent=true
+            ;;
         -r)
             $sudo && error 'cannot combine -R with -r'
             su=true
@@ -1015,7 +1030,7 @@ for arg in $@; do
                     output_dir="$arg"
                 fi
 
-                [[ -f "$output_dir" ]] && error "file already exists with name '$output_dir'"
+                [[ -f "$output_dir" ]] && { echo "ERROR: file already exists with name '$output_dir'"; exit 1; }
                 mkdir -p "$output_dir"
             elif [[ "$username" == '-u' ]]; then
                 username="$arg"
@@ -1125,6 +1140,11 @@ fi
         warnings+=("rm -rf can be dangerous when automated!\n\t  make sure you double check the commands above before continuing")
     fi
 
+    # hand-holding: check for no logging of output
+    if $quiet && [[ "$output_file" == '/dev/null' ]] && [[ -z "$output_dir" ]]; then
+        warnings+=("System output to screen has been disabled AND you are not saving the output to a file!\n\tBy continuing you are executing commands with no way of knowing their results.\n\tThis is NOT advised!")
+    fi
+
     if [[ ${#warnings[*]} -gt 0 ]]; then
         echo -e '\nWARNINGS:'
         for warning in "${warnings[@]}"; do
@@ -1151,12 +1171,14 @@ $load_ssh_agent && ssh_agent_init
 # collect password patterns from user
 get_password_patterns
 
-# run generated script against all provided hosts
-if [[ "$output_file" != '/dev/null' ]]; then
-    run_hosts ${hosts[@]} | tee -a "${output_file}"
-    strip_color_codes "${output_file}"
+# run expect script against all provided hosts
+if $silent; then
+    run_hosts ${hosts[@]} > "$output_file" 2>/dev/null
+elif $quiet; then
+    run_hosts ${hosts[@]} > "$output_file"
 else
-    run_hosts ${hosts[@]}
+    run_hosts ${hosts[@]} | tee -a "${output_file}"
+    [[ "$output_file" != '/dev/null' ]] && strip_color_codes "${output_file}"
 fi
 
 exit 0

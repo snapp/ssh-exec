@@ -831,9 +831,9 @@ run_hosts () {
                 sleep 1
                 for file in ${tmp_dir}/*.log; do
                     if [[ -r "$file" ]]; then
-                        [[ $debug || $quiet ]] && echo -e "\nJob $finished of $total Completed" |  tr '[:lower:]' '[:upper:]' >&2
+                        $debug || $quiet && echo -e "\nJob $finished of $total Completed" |  tr '[:lower:]' '[:upper:]' >&2
 
-                        [[ ! $quiet && ! $silent ]] && cat "$file"
+                        ! $quiet && ! $silent && cat "$file"
 
                         if [[ -n "$output_dir" ]]; then
                             strip_color_codes "$file"
@@ -866,7 +866,7 @@ run_hosts () {
             running=$(jobs -p | grep -v $logger_pid | wc -l)
 
             if [[ $running -lt $concurrency ]]; then
-                [[ $debug || $quiet ]] && echo -e "\nSpawning job $count of $total for $host" |  tr '[:lower:]' '[:upper:]' >&2
+                $debug || $quiet && echo -e "\nSpawning job $count of $total for $host" |  tr '[:lower:]' '[:upper:]' >&2
 
                 {
                     # convert patterns to host based passwords
@@ -889,7 +889,7 @@ run_hosts () {
                 shift
             fi
         else
-            [[ $debug || $quiet ]] && echo -e "\nSpawning job $count of $total for $host" |  tr '[:lower:]' '[:upper:]' >&2
+            $debug || $quiet && echo -e "\nSpawning job $count of $total for $host" |  tr '[:lower:]' '[:upper:]' >&2
 
             # convert patterns to host based passwords
             if [[ ${#password_patterns[*]} -gt 0 ]]; then
@@ -906,7 +906,7 @@ run_hosts () {
             # insert white space following host disconnect
             $verbose || echo -e '\n' | tee -a "${tmp_dir}/${output}.running"
 
-            [[ $debug || $quiet ]] && echo -e "\nJob $count of $total Completed" |  tr '[:lower:]' '[:upper:]' >&2
+            $debug || $quiet && echo -e "\nJob $count of $total Completed" |  tr '[:lower:]' '[:upper:]' >&2
 
             if [[ -n "$output_dir" ]]; then
                 strip_color_codes "${tmp_dir}/${output}.running"

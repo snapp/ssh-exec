@@ -795,7 +795,7 @@ PASSWD
 #
 # $1 - host - the host to run script against
 run_hosts () {
-    local count host logger_pid passwords total prev_batch batch
+    local count host logger_pid passwords total prev_batch batch finished running
 
     batch=1
     count=1
@@ -807,7 +807,7 @@ run_hosts () {
         batch=$(expr ${prev_batch%%x*} + 1)
     fi
 
-    [[ $batch -lt 9 ]] && batch="0${batch}"
+    [[ $batch -lt 10 ]] && batch="0${batch}"
 
     # watch for finished host output to print to stdout
     if [[ $concurrency -gt 1 ]]; then
@@ -824,27 +824,48 @@ run_hosts () {
             fi
         fi
 
-        finished=1
-
+        # spawn thread to handle output of finished jobs
         {
-            while [[ $finished -le $total ]]; do
+            finished_count=1
+            finished_output_logs=
+
+            # load expected log files in original order
+            for host in "${hosts[@]}"; do
+                if [[ $finished_count -ge 10 ]]; then
+                    output_log="${tmp_dir}/${batch}x${finished_count}-${host}.log"
+                else
+                    output_log="${tmp_dir}/${batch}x0${finished_count}-${host}.log"
+                fi
+
+                finished_output_logs=(${finished_output_logs[@]} "$output_log")
+
+                ((finished_count+=1))
+            done
+            finished_count=1
+
+
+            while [[ $finished_count -le $total ]]; do
                 sleep 1
-                for file in ${tmp_dir}/*.log; do
-                    if [[ -r "$file" ]]; then
-                        $debug || $quiet && echo -e "\nJob $finished of $total Completed" |  tr '[:lower:]' '[:upper:]' >&2
 
-                        ! $quiet && ! $silent && cat "$file"
+                # look for finished log file from next host
+                while [[ -r "${finished_output_logs[0]}" ]]; do
+                    file="${finished_output_logs[0]}"
 
-                        if [[ -n "$output_dir" ]]; then
-                            strip_color_codes "$file"
-                            output="${output_dir}/${file##*/}"
-                            mv "$file" "${output%.log}"
-                        else
-                            rm -f "$file"
-                        fi
+                    # pop finished log off stack
+                    unset finished_output_logs[0]
+                    finished_output_logs=("${finished_output_logs[@]-}")
 
-                        ((finished+=1))
+                    ! $quiet && ! $silent && cat "$file"
+
+                    if [[ -n "$output_dir" ]]; then
+                        strip_color_codes "$file"
+                        output="${output_dir}/${file##*/}"
+                        mv "$file" "${output%.log}"
+                    else
+                        rm -f "$file"
                     fi
+
+                    ((finished_count+=1))
                 done
             done
         } &
@@ -856,7 +877,7 @@ run_hosts () {
         passwords=( )
         host="$1"
 
-        if [[ $count -gt 9 ]]; then
+        if [[ $count -ge 10 ]]; then
             output="${batch}x${count}-${host}"
         else
             output="${batch}x0${count}-${host}"
@@ -869,6 +890,8 @@ run_hosts () {
                 $debug || $quiet && echo -e "\nSpawning job $count of $total for $host" |  tr '[:lower:]' '[:upper:]' >&2
 
                 {
+                    jobnum=$count
+
                     # convert patterns to host based passwords
                     if [[ ${#password_patterns[*]} -gt 0 ]]; then
                         for pattern in "${password_patterns[@]}"; do
@@ -881,6 +904,8 @@ run_hosts () {
 
                     # insert white space following host disconnect
                     $verbose || echo -e '\n' >> "${tmp_dir}/${output}.running"
+
+                    $debug || $quiet && echo -e "\nJob $jobnum of $total Completed" |  tr '[:lower:]' '[:upper:]' >&2
 
                     mv "${tmp_dir}/${output}.running" "${tmp_dir}/${output}.log"
                 } &

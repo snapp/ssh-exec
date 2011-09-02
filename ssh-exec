@@ -25,7 +25,7 @@ set -u
 [[ "$(which expect)" ]] || { echo 'ERROR: expect command is not available'; exit 1; }
 
 prog='ssh-exec'
-version=11.08
+version=11.08.1
 username="$USER"
 concurrency=1
 output_file=/dev/null
@@ -575,7 +575,8 @@ get_password_patterns () {
 insert_commands () {
     local count output
 
-    output="$(mktemp -u -p $tmp_dir -t XXXXX)"
+    output="$(mktemp -u -t XXXXX)"
+    output="${1}.${output#/tmp/*}"
     cp "$1" "$output"
     shift
 
@@ -669,7 +670,8 @@ INTERACT
 insert_expect_args () {
     local count host password output
 
-    output="$(mktemp -u -p $tmp_dir -t XXXXX)"
+    output="$(mktemp -u -t XXXXX)"
+    output="${1}.${output#/tmp/*}"
     cp "$1" "$output"
     shift
 
@@ -804,7 +806,7 @@ run_hosts () {
     # determine batch number if outputting to existing directory
     if [[ -n "$output_dir" ]]; then
         prev_batch=$(ls -1 "$output_dir" | tail -n1)
-        batch=$(expr ${prev_batch%%x*} + 1)
+        [[ -n "$prev_batch" ]] && batch=$(expr ${prev_batch%%x*} + 1)
     fi
 
     [[ $batch -lt 10 ]] && batch="0${batch}"

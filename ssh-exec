@@ -25,7 +25,7 @@ set -u
 [[ "$(which expect)" ]] || { echo 'ERROR: expect command is not available'; exit 1; }
 
 prog='ssh-exec'
-version=11.08.1
+version=11.08.2
 username="$USER"
 concurrency=1
 output_file=/dev/null
@@ -470,34 +470,38 @@ get_password () {
         function getletter(case_pos) {
             char_case=substr(case_pos, 1, 1)
             pos=substr(case_pos, 2)
-            char=(char_case == "X") ? toupper(substr(host, pos, 1)) : tolower(substr(host, pos, 1))
+            char=substr(host, pos, 1)
 
-            if (char == 1) {
-                return "!"
-            } else if (char == 2) {
-                return "@"
-            } else if (char == 3) {
-                return "#"
-            } else if (char == 4) {
-                return "$"
-            } else if (char == 5) {
-                return "%"
-            } else if (char == 6) {
-                return "^"
-            } else if (char == 7) {
-                return "&"
-            } else if (char == 8) {
-                return "*"
-            } else if (char == 9) {
-                return "("
-            } else if (char == 0) {
-                return ")"
-            } else if (char == "-") {
-                return "_"
-            } else if (char == ".") {
-                return ">"
+            if (char_case == "X") {
+                if (char == 1) {
+                    return "!"
+                } else if (char == 2) {
+                    return "@"
+                } else if (char == 3) {
+                    return "#"
+                } else if (char == 4) {
+                    return "$"
+                } else if (char == 5) {
+                    return "%"
+                } else if (char == 6) {
+                    return "^"
+                } else if (char == 7) {
+                    return "&"
+                } else if (char == 8) {
+                    return "*"
+                } else if (char == 9) {
+                    return "("
+                } else if (char == 0) {
+                    return ")"
+                } else if (char == "-") {
+                    return "_"
+                } else if (char == ".") {
+                    return ">"
+                } else {
+                    return toupper(char)
+                }
             } else {
-                return char
+                return tolower(char)
             }
         }
 
@@ -685,13 +689,15 @@ insert_expect_args () {
     count=1
     while [[ $# -gt 0 ]]; do
         password=$(get_password "$host" "${1-}")
-        sed "s|#password$count#|${password//\"/\\\\\"}|g" "$output" > "${output}.tmp"
+        password="${password//\"/\\\\\"}"
+        password="${password//\$/\\\\\$}"
+        sed "s|#password$count#|$password|g" "$output" > "${output}.tmp"
         cat "${output}.tmp" > "$output"
         ((count+=1))
         shift
     done
 
-    cat "${output}.tmp"
+    cat "$output"
 
     rm -f "${output}"*
 }

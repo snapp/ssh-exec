@@ -25,7 +25,7 @@ set -u
 [[ "$(which expect)" ]] || { echo 'ERROR: expect command is not available'; exit 1; }
 
 prog='ssh-exec'
-version=11.08.2
+version=11.08.3
 username="$USER"
 concurrency=1
 output_file=/dev/null
@@ -580,7 +580,7 @@ insert_commands () {
     local count output
 
     output="$(mktemp -u -t XXXXX)"
-    output="${1}.${output#/tmp/*}"
+    output="${1}.${output##*/}"
     cp "$1" "$output"
     shift
 
@@ -675,7 +675,7 @@ insert_expect_args () {
     local count host password output
 
     output="$(mktemp -u -t XXXXX)"
-    output="${1}.${output#/tmp/*}"
+    output="${1}.${output##*/}"
     cp "$1" "$output"
     shift
 

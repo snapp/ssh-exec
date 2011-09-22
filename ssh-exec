@@ -319,7 +319,8 @@ print_usage () {
     echo
     echo -e "    ${b}--help${c}  display formatted help and exit"
     echo
-    echo -e "    ${b}-i${c}  provide interactive shell against each host in turn"
+    echo -e "    ${b}-i${c}  alias for #interact#"
+    echo -e "        NOTE: does not take further commands; provides interactive shell only"
     echo
     echo -e "    ${b}-o${c} ${u}file${c}"
     echo -e "        the file where each system's output will be logged"
@@ -416,6 +417,10 @@ print_usage () {
         echo -e "    ${b}Login to a list of servers for manual maintenance${c}"
         echo
         echo -e "        $prog -r example-{1..50}.com <<<'#interact#'"
+        echo
+        echo -e "    ${b}Edit the same file interactively on each system as root${c}"
+        echo
+        echo -e "        $prog -r example-{1..50}.com <<<'#interact \"vi /etc/logcheck/logcheck.ignore\"#'"
         echo
         echo -e "    ${b}Execute a custom recipe for running a tripwire update; overriding the"
         echo -e "    default concurrency of 10${c}"

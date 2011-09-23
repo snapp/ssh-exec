@@ -25,7 +25,7 @@ set -u
 [[ "$(which expect)" ]] || { echo 'ERROR: expect command is not available'; exit 1; }
 
 prog='ssh-exec'
-version=11.08.3
+version=11.09-SNAPSHOT
 username="$USER"
 concurrency=1
 output_file=/dev/null
@@ -96,7 +96,7 @@ expect "*nter passphrase" {
         send "\r"
         log_user 1
     }
-} "*ssword" {
+} "*ssword:" {
     if {"$login_password" == "#null#"} {
         send_user "\n\n                   #  Aborted! - No Login Password Available: $host  #\n"
         return
@@ -107,7 +107,7 @@ expect "*nter passphrase" {
         send_user "\n\n                   #       Connect:     $host       #\n"
         send "\r"
         log_user 1
-    } "*ssword" {
+    } "*ssword:" {
         send_user "\n\n                   #  Aborted! - Invalid Login Password: $host  #\n"
         return
     }

@@ -37,6 +37,7 @@ sudo_password_pattern='#null#'
 password_patterns=( )
 password_prompts=( )
 hosts=( )
+interactive=false
 password_auth=false
 debug=false
 quiet=false
@@ -654,10 +655,12 @@ insert_commands () {
         ((count+=1))
     done
 
-    # expand built-in #interact# token
+    # expand built-in #interact# token; performed here instead of in parse_tokens for access to hostname
     while read line args <<<$(grep -n "^#interact" "$output" | head -1 | sed -e 's/:#interact\(.*\)/\1/' -e 's/#$//'); do
         # if no tokens are found we're done
         [[ -z "$line" ]] && break
+
+        interactive=true
 
         # remove leading and trailing quotes while escaping double quotes
         args=$(sed -e "s/^'//" -e "s/'$//" -e 's/^"//' -e 's/"$//' -e 's/"/\\"/g' <<<"$args")
@@ -954,19 +957,25 @@ run_hosts () {
             fi
 
             # run expect script via stdin to avoid passwords being exposed via ps
-            expect -f <(insert_commands "$script" "$username" "$host" "${root_password_pattern-}" "${sudo_password_pattern-}" "${login_password_pattern-}" "${passwords[@]-}") | tee -a "${tmp_dir}/${output}.running"
+            if ! $interactive; then
+                expect -f <(insert_commands "$script" "$username" "$host" "${root_password_pattern-}" "${sudo_password_pattern-}" "${login_password_pattern-}" "${passwords[@]-}") | tee -a "${tmp_dir}/${output}.running"
 
-            [[ $? -eq 2 ]] && { echo "ABORT: Failed to authenticate as root on host: $host"; exit 1; }
+                [[ $? -eq 2 ]] && { echo "ABORT: Failed to authenticate as root on host: $host"; exit 1; }
 
-            # insert white space following host disconnect
-            $verbose || echo -e '\n' | tee -a "${tmp_dir}/${output}.running"
+                # insert white space following host disconnect
+                $verbose || echo -e '\n' | tee -a "${tmp_dir}/${output}.running"
+
+                if [[ -n "$output_dir" ]]; then
+                    strip_color_codes "${tmp_dir}/${output}.running"
+                    mv "${tmp_dir}/${output}.running" "${output_dir}/${output}"
+                fi
+            else
+                expect -f <(insert_commands "$script" "$username" "$host" "${root_password_pattern-}" "${sudo_password_pattern-}" "${login_password_pattern-}" "${passwords[@]-}")
+                [[ $? -eq 2 ]] && { echo "ABORT: Failed to authenticate as root on host: $host"; exit 1; }
+                echo
+            fi
 
             $debug || $quiet && echo -e "\nJob $count of $total Completed" |  tr '[:lower:]' '[:upper:]' >&2
-
-            if [[ -n "$output_dir" ]]; then
-                strip_color_codes "${tmp_dir}/${output}.running"
-                mv "${tmp_dir}/${output}.running" "${output_dir}/${output}"
-            fi
 
             ((count+=1))
             shift
@@ -1013,6 +1022,7 @@ for arg in $@; do
             exit 0
             ;;
         -i)
+            interactive=true
             commands='#interact#'
             ;;
         -o)
@@ -1123,7 +1133,11 @@ fi
 parse_tokens
 
 # sanity check
-[[ $concurrency -gt 1 ]] && grep -q '^#interact#' <<<"$commands" && error '#interact# is not allowed when combined with concurrency'
+if grep -q '^#interact#' <<<"$commands"; then
+    [[ $concurrency -gt 1 ]] && error '#interact# is not allowed when combined with concurrency'
+    [[ -n "$output_dir" ]] && error '#interact# is not allowed when combined with -O'
+    [[ "$output_file" != '/dev/null' ]] && error '#interact# is not allowed when combined with -o'
+fi
 
 # check for active ssh-agent
 if $ssh_agent && ! ssh-add -l >/dev/null 2>&1; then
@@ -1231,6 +1245,8 @@ if $silent; then
     run_hosts ${hosts[@]} > "$output_file" 2>/dev/null
 elif $quiet; then
     run_hosts ${hosts[@]} > "$output_file"
+elif $interactive; then
+    run_hosts ${hosts[@]}
 else
     run_hosts ${hosts[@]} | tee -a "${output_file}"
     [[ "$output_file" != '/dev/null' ]] && strip_color_codes "${output_file}"

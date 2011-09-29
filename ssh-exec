@@ -76,10 +76,10 @@ set connected 1
 expect_after {
     timeout {
         send_user "\n\n                   #  Aborted! - Timeout Looking for Prompt: $host  #\n"
-        return
+        exit 1
     } default {
         send_user "\n\n                   #  Aborted! - Error State Observed: $host  #\n"
-        return
+        exit 1
     }
 }
 
@@ -848,7 +848,7 @@ run_hosts () {
         if $su || $sudo; then
             echo -en '\n\n                   # Validating Root Password...'
             cat <(insert_expect_args "$script" "$username" "$1" "${root_password_pattern-}" "${sudo_password_pattern-}" "${login_password_pattern-}") | sed '/#COMMANDS#/d' | expect - > /dev/null 2>&1
-            if [[ $? -eq 2 ]]; then
+            if [[ $? -ne 0 ]]; then
                 echo -e 'FAILED #\n'
                 echo "ABORT: Failed to authenticate as root on host: $1"
                 exit 1

@@ -299,15 +299,6 @@ print_usage () {
         echo -e "        $prog example.com <<'EOF'"
         echo -e "        #changelog cas \"here is arg2's content\"#"
         echo -e "        EOF"
-        echo
-        echo -e "    ${b}WARNING:${c} ${b}${u}$prog is only responsible for establishing the connection and${c}"
-        echo -e "             ${b}${u}executing the commands you supplied it in the same way as if${c}"
-        echo -e "             ${b}${u}you had manually ssh'd in and were typing the commands by hand.${c}"
-        echo -e "             ${b}${u}There is NO special handling of the commands on the server side to${c}"
-        echo -e "             ${b}${u}account for OS, distribution, or any other required environment setup.${c}"
-        echo -e "             ${b}${u}It is YOUR responsibility to ensure the commands will function${c}"
-        echo -e "             ${b}${u}on each of the hosts provided.${c}"
-        echo
     fi
 
     echo -e "${b}OPTIONS${c}"
@@ -315,10 +306,14 @@ print_usage () {
     echo -e "        the number of jobs to run concurrently; default is 10 if no value is"
     echo -e "        provided"
     echo
-    echo -e "        NOTE: While the script will execute in separate threads up to the"
-    echo -e "              concurrency level you provide, the results will always be"
-    echo -e "              returned in the order that you originally specified."
-    echo
+
+    if $verbose; then
+        echo -e "        NOTE: While the script will execute in separate threads up to the"
+        echo -e "              concurrency level you provide, the results will always be"
+        echo -e "              returned in the order that you originally specified."
+        echo
+    fi
+
     echo -e "    ${b}-d${c}  enable debug mode (print ALL output)"
     echo
     echo -e "    ${b}-f${c} ${u}file${c}"
@@ -329,18 +324,30 @@ print_usage () {
     echo -e "    ${b}--help${c}  display formatted help and exit"
     echo
     echo -e "    ${b}-i${c}  convenience mechanism equivalent to passing '#interact#'"
-    echo -e "        NOTE: No other commands will be read if this argument is used."
-    echo -e "              Additionally, this argument is mutually exclusive from"
-    echo -e "              -c, -o, and -O."
+
+    if $verbose; then
+        echo -e "        NOTE: No other commands will be read if this argument is used."
+        echo -e "              Additionally, this argument is mutually exclusive with"
+        echo -e "              -c, -o, and -O."
+    fi
+
     echo
     echo -e "    ${b}-o${c} ${u}file${c}"
     echo -e "        the file where each system's output will be logged"
-    echo -e "        NOTE: if no file name is provided a unique one will be generated"
     echo
+
+    if $verbose; then
+        echo -e "        NOTE: if no file name is provided a unique one will be generated"
+    fi
+
     echo -e "    ${b}-O${c} ${u}directory${c}"
     echo -e "        the directory where each system's output will be logged as a"
     echo -e "        separate file."
-    echo -e "        NOTE: if no directory is provided a unique one will be generated"
+
+    if $verbose; then
+        echo -e "        NOTE: if no directory is provided a unique one will be generated"
+    fi
+
     echo
     echo -e "    ${b}-q${c}  enable quiet mode (only prints job status to screen)"
     echo
@@ -349,12 +356,16 @@ print_usage () {
     echo -e "    ${b}-r${c}  run commands as root via 'su -' authentication"
     echo
     echo -e "    ${b}-R${c}  run commands as root via 'sudo su - root' authentication"
-    echo -e "        NOTE: You will be prompted for the password necessary for sudo to"
-    echo -e "              execute."
-    echo -e "              This password will only be used if the server prompts for it."
-    echo -e "              This means that if you have NOPASSWD:ALL set in the sudoers file"
-    echo -e "              you could simply hit 'Enter' when prompted and no password will"
-    echo -e "              be required."
+
+    if $verbose; then
+        echo -e "        NOTE: You will be prompted for the password necessary for sudo to"
+        echo -e "              execute."
+        echo -e "              This password will only be used if the server prompts for it."
+        echo -e "              This means that if you have NOPASSWD:ALL set in the sudoers file"
+        echo -e "              you could simply hit 'Enter' when prompted and no password will"
+        echo -e "              be required."
+    fi
+
     echo
     echo -e "    ${b}-u${c} ${u}username${c}"
     echo -e "        the username used during initial ssh login; default is your current"
@@ -367,6 +378,19 @@ print_usage () {
     echo -e "    ${b}-p${c}  prompt for user password; allows for a fallback if key login fails"
     echo
     echo -e "    ${b}-P${c}  prompt for user password; disables spawning of ssh-agent"
+    echo
+    echo -e "${b}WARNING${c}"
+    echo -e "    ${b}$prog is only responsible for establishing the connection and${c}"
+    echo -e "    ${b}executing the commands you supplied it in the same way as if${c}"
+    echo -e "    ${b}you had manually ssh'd in and were typing the commands by hand.${c}"
+    echo
+    echo -e "    ${b}There is NO special handling of the commands on the server side to${c}"
+    echo -e "    ${b}account for OS, distribution, or any other required environment${c}"
+    echo -e "    ${b}setup.${c}"
+    echo
+    echo -e "    ${b}It is YOUR responsibility to ensure the commands will function${c}"
+    echo -e "    ${b}on each of the hosts provided.${c}"
+    echo
 
     if $verbose; then
         echo
@@ -384,7 +408,7 @@ print_usage () {
         echo -e "        directly into the console.  When you are finished and would like to"
         echo -e "        give control back to automatic execution, simply type #x"
         echo
-        echo -e "        NOTE:
+        echo -e "        NOTE:"
         echo -e "            * You can pass ONE argument to the interact token, which is useful"
         echo -e "              for executing a command just prior to entering interactive mode."
         echo
@@ -468,7 +492,7 @@ print_usage () {
         echo -e "        EOF"
         echo
         echo -e "${b}COPYRIGHT${c}"
-        sed -n '3,16s/^#/   /p' $0
+        sed -n '3,16s/^#//p' $0
     fi
 }
 

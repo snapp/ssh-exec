@@ -25,7 +25,7 @@ set -u
 [[ "$(which expect)" ]] || { echo 'ERROR: expect command is not available'; exit 1; }
 
 prog='ssh-exec'
-version=11.09
+version=11.10-SNAPSHOT
 username="$USER"
 concurrency=1
 output_file=/dev/null
@@ -59,7 +59,7 @@ trap 'stty echo; cat $tmp_dir/*.{running,log} 2>/dev/null; echo -e "\nAborted!" 
 # initialize expect script used during ssh session
 cat > "$script" <<'EXPECT'
 #!/usr/bin/expect
-set timeout 10
+set timeout 20
 set prompt "(>|%|#|\\$) (\x1B.*)*$"
 set root_prompt "# (\x1B.*)*$"
 set username "#username#"

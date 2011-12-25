@@ -25,7 +25,7 @@ set -u
 [[ "$(which expect)" ]] || { echo 'ERROR: expect command is not available'; exit 1; }
 
 prog='ssh-exec'
-version=11.10
+version=11.12-SNAPSHOT
 username="$USER"
 concurrency=1
 output_file=/dev/null

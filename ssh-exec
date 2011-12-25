@@ -262,7 +262,7 @@ print_usage () {
         echo -e "            ${b}/(>|%|#|\\$) \$/${c}"
         echo
         echo -e "    Should a command not return to a prompt within the timeout period (default"
-        echo -e "    is 10 seconds) then $prog will abort execution of your script against"
+        echo -e "    is 20 seconds) then $prog will abort execution of your script against"
         echo -e "    that host."
         echo
         echo -e "    ${b}Tokens${c}"
@@ -419,10 +419,10 @@ print_usage () {
         echo -e "        A custom prompt can also be provided as the third argument."
         echo
         echo -e "    ${b}#timeout ${u}duration${c}${b}#${c}"
-        echo -e "        Override the default 10 second timeout that expect uses waiting"
+        echo -e "        Override the default 20 second timeout that expect uses waiting"
         echo -e "        for a prompt."
         echo -e "        Timeout is in seconds; while a value of -1 represents unlimited"
-        echo -e "        If no value is provided timeout will be reset to 10 seconds"
+        echo -e "        If no value is provided timeout will be reset to 20 seconds"
         echo
         echo -e "    ${b}#user#${c}"
         echo -e "        inserts the username that $prog is logging in as"
@@ -651,8 +651,8 @@ insert_commands () {
             -e '/^#/! s_(_\(_g' \
             -e '/^#/! s_^_expect -re $prompt;send "_' \
             -e '/^#/! s_$_\\r"_' \
-            -e 's_^#timeout#$_set timeout 10_' \
-            -e 's_^#\(timeout .*\)#.*_set \1_' \
+            -e 's_^#timeout#$_expect -re $prompt;set timeout 20;send "\r"_' \
+            -e 's_^#\(timeout .*\)#_expect -re $prompt;set \1;send "\r"_' \
             -e 's_^#\(expect .*\)#.*_\1_' \
             <<<"$commands")
     sed '/^#COMMANDS#/d' "${output}.tmp" > "$output"

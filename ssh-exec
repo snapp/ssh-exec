@@ -1095,28 +1095,12 @@ for arg in $@; do
                 [[ ! -r "$arg" ]] && error 'cannot read provided command file'
                 commands=$(cat "$arg")
             elif [[ "$output_file" == '-o' ]]; then
-                # check if arg looks like a hostname or argument
-                if [[ "$arg" =~ (com|edu|gov|mil)$ ]] || [[ "$arg" =~ ^-. ]]; then
-                    hosts+=( "$arg" )
-
-                    # generate filename since none was provided
-                    output_file="$HOME/ssh-exec.$(date +%Y%m%d_%H%M%S)"
-                else
-                    output_file="$arg"
-                    [[ -e "$output_file" ]] && output_file="$output_file.$(date +%Y%m%d_%H%M%S)"
-                fi
+                output_file="$HOME/ssh-exec.$(date +%Y%m%d_%H%M%S)"
+                hosts+=( "$arg" )
             elif [[ "$output_dir" == '-O' ]]; then
-                # check if arg looks like a hostname or argument
-                if [[ "$arg" =~ (com|edu|gov|mil)$ ]] || [[ "$arg" =~ ^-. ]]; then
-                    hosts+=( "$arg" )
-
-                    # generate filename since none was provided
-                    output_dir="$HOME/ssh-exec.$(date +%Y%m%d)"
-                else
-                    output_dir="$arg"
-                fi
-
+                output_dir="$HOME/ssh-exec.$(date +%Y%m%d)"
                 [[ -f "$output_dir" ]] && { echo "ERROR: file already exists with name '$output_dir'"; exit 1; }
+                hosts+=( "$arg" )
                 mkdir -p "$output_dir"
             elif [[ "$username" == '-u' ]]; then
                 username="$arg"

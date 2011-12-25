@@ -1222,7 +1222,9 @@ fi
     warnings=( )
     # hand-holding: check for password change without password being provided
     if ! grep -q '^#password:2' <<<"$commands"; then
-        grep -q 'passwd' <<<"$commands" && warnings+=("passwd will require the #password:2# token\n\t\t- you may want to consider using the builtin #passwd <username># token instead")
+        if grep -q 'passwd' <<<"$commands" && ! grep -q '-' <<<"$commands"; then
+            warnings+=("passwd will require the #password:2# token\n\t\t- you may want to consider using the builtin #passwd <username># token instead")
+        fi
     fi
 
     # hand-holding: check for rm -rf

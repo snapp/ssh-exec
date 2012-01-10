@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (C) 2011, Christopher A. Snapp <snappca@gmail.com>
+# Copyright (C) 2012, Christopher A. Snapp <snappca@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@ set -u
 [[ "$(which expect)" ]] || { echo 'ERROR: expect command is not available'; exit 1; }
 
 prog='ssh-exec'
-version=11.12-SNAPSHOT
+version=12.01
 username="$USER"
 concurrency=1
 output_file=/dev/null

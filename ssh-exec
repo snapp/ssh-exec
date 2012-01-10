@@ -203,7 +203,7 @@ print_usage () {
     fi
 
     echo -e "${b}SYNOPSIS${c}"
-    echo -e "    ${b}$prog${c} [${b}-hipPrR${c}] [${b}--help${c}] [${b}-c${c} ${u}count${c}] [${b}-f${c} ${u}commands-file${c}] [${b}-o${c} ${u}output-file${c}] [${b}-u${c} ${u}username${c}] ${u}host1 host2 host3...${c}"
+    echo -e "    ${b}$prog${c} [${b}-hioOpPrR${c}] [${b}--help${c}] [${b}-c${c} ${u}count${c}] [${b}-f${c} ${u}commands-file${c}] [${b}-u${c} ${u}username${c}] ${u}host1 host2 host3...${c}"
     echo
 
     if $verbose; then
@@ -329,22 +329,10 @@ print_usage () {
     fi
 
     echo
-    echo -e "    ${b}-o${c} ${u}file${c}"
-    echo -e "        the file where each system's output will be logged"
+    echo -e "    ${b}-o${c}  log each system's output to a timestamped file (i.e. ~/ssh-exec.20120131_105929)"
     echo
-
-    if $verbose; then
-        echo -e "        NOTE: if no file name is provided a unique one will be generated"
-    fi
-
-    echo -e "    ${b}-O${c} ${u}directory${c}"
-    echo -e "        the directory where each system's output will be logged as a"
-    echo -e "        separate file."
-
-    if $verbose; then
-        echo -e "        NOTE: if no directory is provided a unique one will be generated"
-    fi
-
+    echo -e "    ${b}-O${c}  log each system's output to a separate file within a datestamped directory"
+    echo -e "        the naming format will be (i.e. ~/ssh-exec.20120131)"
     echo
     echo -e "    ${b}-q${c}  enable quiet mode (only prints job status to screen)"
     echo

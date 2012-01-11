@@ -639,8 +639,8 @@ insert_commands () {
             -e '/^#/! s_(_\(_g' \
             -e '/^#/! s_^_expect -re $prompt;send "_' \
             -e '/^#/! s_$_\\r"_' \
-            -e 's_^#timeout#$_expect -re $prompt;set timeout 20;send "\r"_' \
-            -e 's_^#\(timeout .*\)#_expect -re $prompt;set \1;send "\r"_' \
+            -e 's_^#timeout#$_expect -re $prompt;set timeout 20;send "\\r"_' \
+            -e 's_^#\(timeout .*\)#_expect -re $prompt;set \1;send "\\r"_' \
             -e 's_^#\(expect .*\)#.*_\1_' \
             <<<"$commands")
     sed '/^#COMMANDS#/d' "${output}.tmp" > "$output"

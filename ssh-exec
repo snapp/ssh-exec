@@ -203,7 +203,7 @@ print_usage () {
     fi
 
     echo -e "${b}SYNOPSIS${c}"
-    echo -e "    ${b}$prog${c} [${b}-hioOpPrR${c}] [${b}--help${c}] [${b}-c${c} ${u}count${c}] [${b}-f${c} ${u}commands-file${c}] [${b}-u${c} ${u}username${c}] ${u}host1 host2 host3...${c}"
+    echo -e "    ${b}$prog${c} [${b}-hioOpPrR${c}] [${b}--help${c}] [${b}-c${c} ${u}count${c}] [${b}-f${c} ${u}commands-file${c}] [${b}-F${c} ${u}hosts-file${c}] [${b}-u${c} ${u}username${c}] ${u}host1 host2 host3...${c}"
     echo
 
     if $verbose; then
@@ -315,6 +315,9 @@ print_usage () {
     echo
     echo -e "    ${b}-f${c} ${u}file${c}"
     echo -e "        the file containing commands to be executed"
+    echo
+    echo -e "    ${b}-F${c} ${u}file${c}"
+    echo -e "        the file containing hosts to be executed against"
     echo
     echo -e "    ${b}-h${c}  display this help and exit"
     echo
@@ -1066,6 +1069,9 @@ for arg in $@; do
         -f)
             commands='-f'
             ;;
+        -F)
+            hosts=( '-F' )
+            ;;
         -u)
             username='-u'
             ;;
@@ -1082,6 +1088,9 @@ for arg in $@; do
             elif [[ "$commands" == '-f' ]]; then
                 [[ ! -r "$arg" ]] && error 'cannot read provided command file'
                 commands=$(cat "$arg")
+            elif [[ ${#hosts[*]} -ne 0 && "${hosts[0]}" == '-F' ]]; then
+                [[ ! -r "$arg" ]] && error 'cannot read provided hosts file'
+                hosts=( $(tr '\n' ' ' < "$arg") )
             elif [[ "$output_file" == '-o' ]]; then
                 output_file="$HOME/ssh-exec.$(date +%Y%m%d_%H%M%S)"
                 hosts+=( "$arg" )
@@ -1100,7 +1109,7 @@ for arg in $@; do
 done
 
 # sanity check
-[[ ${#hosts[*]} -eq 0 ]] && error 'no hosts provided'
+[[ ${#hosts[*]} -eq 0 || "${hosts[0]}" == '-F' ]] && error 'no hosts provided'
 
 # set default concurrecy if number was not provided
 [[ "$concurrency" == '-c' ]] && concurrency=10

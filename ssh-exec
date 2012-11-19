@@ -1110,6 +1110,7 @@ done
 
 # sanity check
 [[ ${#hosts[*]} -eq 0 || "${hosts[0]}" == '-F' ]] && error 'no hosts provided'
+[[ "$commands" == '-f' ]] && error 'no commands provided'
 
 # set default concurrecy if number was not provided
 [[ "$concurrency" == '-c' ]] && concurrency=10

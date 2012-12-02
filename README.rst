@@ -2,7 +2,7 @@ SSH-EXEC
 ========
 
 :Author: Christopher A. Snapp <snappca@gmail.com>
-:Version: 12.11
+:Version: 12.12
 :Copyright: GPLv3
 
 **ssh-exec** executes commands on a list of remote hosts; optionally as root

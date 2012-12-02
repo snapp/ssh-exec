@@ -172,10 +172,8 @@ if {$connected} {
 EXPECT
 
 # print command usage
-#
-# $1 - boolean determining if full formatted output should be printed
 print_usage () {
-    cat <<'EOF'
+    cat <<EOF
 Usage: $prog [-hioOpPrR] [--help] [-c count] [-f commands-file] [-F hosts-file] [-u username] host1 host2 host3...
 
 Options:

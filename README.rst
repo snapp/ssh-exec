@@ -146,11 +146,8 @@ Options
     **-F** *file*
       the file containing hosts to be executed against
 
-    **-h**
+    **-h, --help**
       display this help and exit
-
-    **--help**
-      display formatted help and exit
 
     **-i**
       convenience mechanism equivalent to passing '``#interact#``'

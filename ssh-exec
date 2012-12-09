@@ -28,6 +28,7 @@ prog='ssh-exec'
 version=12.12
 username="$USER"
 concurrency=1
+continue=false
 output_file=/dev/null
 output_dir=
 commands=
@@ -174,7 +175,7 @@ EXPECT
 # print command usage
 print_usage () {
     cat <<EOF
-Usage: $prog [-hioOpPrR] [--help] [-c count] [-f commands-file] [-F hosts-file] [-u username] host1 host2 host3...
+Usage: $prog [-hioOpPrRy] [--help] [-c count] [-f commands-file] [-F hosts-file] [-u username] host1 host2 host3...
 
 Options:
     -c count
@@ -198,6 +199,10 @@ Options:
     -O  log each system's output to a separate file within a datestamped directory
         the naming format will be (i.e. ~/ssh-exec.20120131)
 
+    -p  prompt for user password; allows for a fallback if key login fails
+
+    -P  prompt for user password; disables spawning of ssh-agent
+
     -q  enable quiet mode (only prints job status to screen)
 
     -Q  enable silent mode (no printing of any output to screen)
@@ -214,9 +219,7 @@ Options:
 
     -V  enable verbose output
 
-    -p  prompt for user password; allows for a fallback if key login fails
-
-    -P  prompt for user password; disables spawning of ssh-agent
+    -y  automatic yes to prompt
 EOF
 }
 
@@ -814,6 +817,9 @@ for arg in $@; do
         -V)
             verbose=true
             ;;
+        -y)
+            continue=true
+            ;;
          *)
             if [[ "$concurrency" == '-c' ]] && [[ "$arg" =~ ^[0-9]+$ ]]; then
                 concurrency=$arg
@@ -959,16 +965,18 @@ fi
     fi
 } | tee -a "$output_file"
 
-# flush stdin before prompting to continue
+# flush stdin
 0<&-
 exec 0</dev/tty
 
-echo -e -n "\nAre you sure you want to continue [y/N]? "
-read continue
+if ! $continue; then
+    echo -e -n "\nAre you sure you want to continue [y/N]? "
+    read continue
 
-if [[ ! "$continue" =~ y|Y ]]; then
-    echo 'Aborted!'
-    exit 0
+    if [[ ! "$continue" =~ y|Y ]]; then
+        echo 'Aborted!'
+        exit 0
+    fi
 fi
 
 # load ssh-agent

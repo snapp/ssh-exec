@@ -36,5 +36,5 @@ do_build() {
 do_install() {
   cp ssh-exec $pkg_prefix/bin
   chmod 755 $pkg_prefix/bin/ssh-exec
-  ln -s "$(pkg_path_for coreutils)/bin/env" /usr/bin/env || true
+  fix_interpreter $pkg_prefix/bin/ssh-exec core/coreutils bin/env
 }

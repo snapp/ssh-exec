@@ -18,6 +18,8 @@
 # enable unbound variable checking
 set -u
 
+USER="${USER:-$(id -un)}"
+
 # os check
 [[ "$(uname -s)" != 'SunOS' ]] || { echo 'ERROR: this script is known not to work on Solaris'; exit 1; }
 
